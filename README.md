@@ -50,8 +50,8 @@ You will need [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (the
 
 ```bash
 # Clone
-git clone https://github.com/Stage-11-Agentics/stage11-educational-agentic-engineering-demos.git
-cd stage11-educational-agentic-engineering-demos
+git clone https://github.com/Stage-11-Agentics/educational-agentic-engineering-materials.git
+cd educational-agentic-engineering-materials
 
 # The slash command.
 mkdir -p ~/.claude/commands
