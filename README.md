@@ -1,4 +1,4 @@
-# Stage 11 — Educational Agentic Engineering Demos
+# Stage 11 — Educational Agentic Engineering Materials
 
 Patterns from the working setup of a Stage 11 hyperengineer. Published as reference material for operators learning to build software with digital intelligences as first-class teammates.
 
