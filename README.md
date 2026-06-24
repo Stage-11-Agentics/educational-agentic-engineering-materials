@@ -12,10 +12,10 @@ This is what we actually run, every day. Not a sanitized demo. The files in this
 |---|---|
 | [`commands/trident-code-review.md`](commands/trident-code-review.md) | Nine-reviewer multi-model code review. Claude + Codex + Gemini, three lenses each, four parallel synthesizers, one validated machine-actionable fix plan. |
 | [`commands/trident-plan-review.md`](commands/trident-plan-review.md) | Same shape as trident code review, pointed at a plan or design document instead of a diff. |
-| [`commands/code_review.md`](commands/code_review.md), [`commands/code_review_critical.md`](commands/code_review_critical.md) | Single-agent review prompts the trident commands compose. |
-| [`agents/`](agents/) | Markdown prompt files that the trident commands invoke as sub-agent definitions. Just markdown, but Claude Code reads them from `~/.claude/agents/` when its Agent tool spawns sub-agents, so they live there once installed. |
+| [`agents/`](agents/) | The lens prompt files the trident commands compose — `CodeReview-{Standard,Critical,Evolutionary}.md` and `PlanReview-{Standard,Adversarial,Evolutionary}.md`. Plain markdown, not slash commands; trident reads them from `~/.claude/agents/` by path. (For a single day-to-day review, use Claude Code's built-in `/code-review`.) |
 | [`atins-global-claude-md-example.md`](atins-global-claude-md-example.md) | One operator's global `~/.claude/CLAUDE.md`. Loads into every Claude Code session on the machine. The headline pattern: language overloading. |
 | [`commands/capture-skill.md`](commands/capture-skill.md) | Extract reusable knowledge from a conversation into a `CLAUDE.md` file or a new slash command. The flywheel for a self-improving codebase. |
+| [`atins-statusline-example.sh`](atins-statusline-example.sh) | One operator's two-line Claude Code status line. Session telemetry on top, working-tree location below. Git worktree-aware, model colored by family, context + rate-limit gradients. |
 
 ────
 
@@ -53,26 +53,24 @@ You will need [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (the
 git clone https://github.com/Stage-11-Agentics/stage11-educational-agentic-engineering-demos.git
 cd stage11-educational-agentic-engineering-demos
 
-# Slash commands. Trident composes code_review.md and code_review_critical.md
-# into its prompt files, so all three must be in ~/.claude/commands/.
+# The slash command.
 mkdir -p ~/.claude/commands
 cp commands/trident-code-review.md ~/.claude/commands/
-cp commands/code_review.md         ~/.claude/commands/
-cp commands/code_review_critical.md ~/.claude/commands/
 
-# Sub-agent prompt files. Trident reads CodeReview-Evolutionary.md from
-# ~/.claude/agents/ when it spawns the evolutionary Claude reviewer via the
-# Agent tool. Plain markdown, but the path matters.
+# Review-lens prompt files. Trident composes its Standard, Critical, and
+# Evolutionary lenses from these three files in ~/.claude/agents/. They are
+# not slash commands — trident reads them by path. (For day-to-day single
+# reviews, use Claude Code's built-in /code-review.)
 mkdir -p ~/.claude/agents
+cp agents/CodeReview-Standard.md     ~/.claude/agents/
+cp agents/CodeReview-Critical.md     ~/.claude/agents/
 cp agents/CodeReview-Evolutionary.md ~/.claude/agents/
 
-# Optional: hardlink commands into Codex CLI's prompt directory so the same
+# Optional: hardlink the command into Codex CLI's prompt directory so the same
 # file backs both `/trident-code-review` in Claude Code and the equivalent
 # Codex prompt. Edit one, both update.
 mkdir -p ~/.codex/prompts
 ln ~/.claude/commands/trident-code-review.md ~/.codex/prompts/trident-code-review.md 2>/dev/null
-ln ~/.claude/commands/code_review.md         ~/.codex/prompts/code_review.md 2>/dev/null
-ln ~/.claude/commands/code_review_critical.md ~/.codex/prompts/code_review_critical.md 2>/dev/null
 ```
 
 ### Run It
@@ -169,6 +167,46 @@ The agent extracts what it learned and writes it into either the project's `CLAU
 
 ```bash
 cp commands/capture-skill.md ~/.claude/commands/
+```
+
+────
+
+## Status Line
+
+The two-line status bar from the operator's live `~/.claude/`. Claude Code runs the script on every message and renders whatever it prints, so this is a persistent, at-a-glance readout of the session and the working tree.
+
+```
+[opus-4.8·1M high]  18%  $1.23/184k/1.0M  +156 -23  5h-53%, 7d-39%
+~/Projects/acetate  ⎇ main ●3  ⑂ feature-wt  PR#259 ✗  2:23 api
+```
+
+Top line is session telemetry, bottom line is location. The split is the point: the bottom answers *which checkout is this* — the disorienting question when you run parallel agents across git worktrees — and the top answers *how is this session going*.
+
+**Top line:** model name and reasoning effort inside the brackets, with the model colored by family (opus white, sonnet purple, haiku pink) · context-window usage with a green→yellow→red gradient · `$cost / tokens-in-context / window-size` · lines added and removed this session · 5-hour and 7-day rate-limit usage, neutral until 80% then yellow, red at 95%.
+
+**Bottom line:** working directory with `$HOME` collapsed to `~` · git branch and a dirty-file count · the worktree name when you are inside a linked `git worktree`, the field most off-the-shelf status lines miss · open PR number and review state · API time.
+
+Almost everything is read straight from the JSON Claude Code pipes to the script: `workspace.git_worktree`, `context_window.used_percentage`, `effort.level`, `rate_limits.*`, `pr.*`. The only shell-out is the git branch and dirty count, cached per `session_id` on a three-second TTL so it stays fast even though it fires after every message. Fields that are absent — no worktree, no open PR, no rate limits on a non-subscription account — simply drop out, so the line degrades cleanly anywhere.
+
+**Install:**
+
+```bash
+# Requires jq and a truecolor + unicode-capable terminal (Ghostty, iTerm2, WezTerm, Kitty).
+brew install jq   # or: apt-get install jq
+
+cp atins-statusline-example.sh ~/.claude/statusline.sh
+chmod +x ~/.claude/statusline.sh
+```
+
+Then point your settings at it in `~/.claude/settings.json`:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "bash ~/.claude/statusline.sh"
+  }
+}
 ```
 
 ────
