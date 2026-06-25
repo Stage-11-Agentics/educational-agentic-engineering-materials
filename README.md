@@ -15,7 +15,7 @@ This is what we actually run, every day. Not a sanitized demo. The files in this
 | [`agents/`](agents/) | The lens prompt files the trident commands compose — `CodeReview-{Standard,Critical,Evolutionary}.md` and `PlanReview-{Standard,Adversarial,Evolutionary}.md`. Plain markdown, not slash commands; trident reads them from `~/.claude/agents/` by path. (For a single day-to-day review, use Claude Code's built-in `/code-review`.) |
 | [`atins-global-claude-md-example.md`](atins-global-claude-md-example.md) | One operator's global `~/.claude/CLAUDE.md`. Loads into every Claude Code session on the machine. The headline pattern: language overloading. |
 | [`commands/capture-skill.md`](commands/capture-skill.md) | Extract reusable knowledge from a conversation into a `CLAUDE.md` file or a new slash command. The flywheel for a self-improving codebase. |
-| [`atins-statusline-example.sh`](atins-statusline-example.sh) | One operator's two-line Claude Code status line. Session telemetry on top, working-tree location below. Git worktree-aware, model colored by family, context + rate-limit gradients. |
+| [`atins-statusline-example.sh`](atins-statusline-example.sh) | One operator's single adaptive Claude Code status line. Priority-ordered, collapses right-to-left as the pane narrows. Git worktree-aware, model colored by family, context + rate-limit gradients with a usage glide slope. |
 
 ────
 
@@ -173,20 +173,30 @@ cp commands/capture-skill.md ~/.claude/commands/
 
 ## Status Line
 
-The two-line status bar from the operator's live `~/.claude/`. Claude Code runs the script on every message and renders whatever it prints, so this is a persistent, at-a-glance readout of the session and the working tree.
+A single adaptive status line from the operator's live `~/.claude/`. Claude Code runs the script on every message and renders whatever it prints, so this is a persistent, at-a-glance readout of the session and the working tree. It is **priority-ordered left-to-right and collapses right-to-left as the pane narrows** — Claude passes the pane width in `$COLUMNS`, and the script sheds whole groups to fit:
 
 ```
-[opus-4.8·1M high]  18%  $1.23/184k/1.0M  +156 -23  5h-53%, 7d-39%
-~/Projects/acetate  ⎇ main ●3  ⑂ feature-wt  PR#259 ✗  2:23 api
+# wide pane (≈150+ cols) — everything
+18%  [opus-4.8·1M high]   5h(3.5h) : 53%(◇30%)  7d(5.0d) : 39%(◇29%)   ~/Projects/Gregorovich/projects/acetate  ⎇ main ●44   $1.23/184k  +156 -23  2:23 api
+
+# ~110 cols — stats dropped, path shrinks to a basename
+18%  [opus-4.8·1M high]   5h(3.5h) : 53%(◇30%)  7d(5.0d) : 39%(◇29%)   acetate  ⎇ main ●44
+
+# ~80 cols — only the core and the rate-limit budget survive
+18%  [opus-4.8·1M high]   5h(3.5h) : 53%(◇30%)  7d(5.0d) : 39%(◇29%)
+
+# narrow split — context and model never drop
+18%  [opus-4.8·1M high]
 ```
 
-Top line is session telemetry, bottom line is location. The split is the point: the bottom answers *which checkout is this* — the disorienting question when you run parallel agents across git worktrees — and the top answers *how is this session going*.
+Four groups, in priority order:
 
-**Top line:** model name and reasoning effort inside the brackets, with the model colored by family (opus white, sonnet purple, haiku pink) · context-window usage with a green→yellow→red gradient · `$cost / tokens-in-context / window-size` · lines added and removed this session · 5-hour and 7-day rate-limit usage, neutral until 80% then yellow, red at 95%.
+- **Core** (never dropped) — context-window usage with a green→yellow→red gradient, then the model name and reasoning effort inside the brackets. Model colored by family (opus white, sonnet purple, haiku pink); effort styled by intensity (italic below high, bold above, and never alarm-red).
+- **Budget** — the 5-hour and 7-day rate-limit windows, each rendered `window(time-left) : used%(◇pace%)`. The `◇` is a **glide slope**: where you'd be if usage were spread evenly across the window. Under it is headroom; over it means you're burning faster than even. Dim until `used%` crosses the per-window threshold (yellow, red at 95%), so it stays quiet until it matters.
+- **Location** — working directory (full path when wide, basename when tight), git branch with a dirty-file count, and the worktree name when you're inside a linked `git worktree` — the field most off-the-shelf status lines miss, and what tells parallel agents apart.
+- **Stats** — session cost and tokens, lines added/removed, open PR number + review state, and API time. First to go when space is tight.
 
-**Bottom line:** working directory with `$HOME` collapsed to `~` · git branch and a dirty-file count · the worktree name when you are inside a linked `git worktree`, the field most off-the-shelf status lines miss · open PR number and review state · API time.
-
-Almost everything is read straight from the JSON Claude Code pipes to the script: `workspace.git_worktree`, `context_window.used_percentage`, `effort.level`, `rate_limits.*`, `pr.*`. The only shell-out is the git branch and dirty count, cached per `session_id` on a three-second TTL so it stays fast even though it fires after every message. Fields that are absent — no worktree, no open PR, no rate limits on a non-subscription account — simply drop out, so the line degrades cleanly anywhere.
+Almost everything is read straight from the JSON Claude Code pipes to the script: `workspace.git_worktree`, `context_window.used_percentage`, `effort.level`, `rate_limits.*` (including `resets_at`, for the time-left and glide-slope math), `pr.*`. The only shell-out is the git branch and dirty count, cached per `session_id` on a three-second TTL so it stays fast even though it fires after every message. Absent fields — no worktree, no open PR, no rate limits on a non-subscription account — simply drop out, so the line degrades cleanly anywhere.
 
 **Install:**
 

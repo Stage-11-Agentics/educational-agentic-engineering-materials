@@ -1,16 +1,19 @@
 #!/bin/bash
-# Claude Code Status Line — two-line layout
+# Claude Code Status Line — single adaptive line
 #
-#   Top line:    [model effort]  context%  $cost/tokens-used/total  +adds -dels  5h-%, 7d-%
-#   Bottom line: ~/path  ⎇ branch ●dirty  ⑂ worktree  PR#n  api-time
+#   ctx%  [model effort]   C: 7d/5h budget   B: ~/path ⎇branch ⑂wt   D: $cost/tok +/- api
+#   └─ A: always shown ─┘  └──────────────── dropped as the pane narrows ─────────────┘
+#
+# One line, priority-ordered left→right. The pane width arrives in $COLUMNS
+# (Claude sets it; e.g. 291 in a full window). As the pane narrows the line
+# collapses right-to-left: drop D (stats), then B (location), then C (budget);
+# ctx% + model are never dropped. Path shrinks to a basename below ~150 cols.
 #
 # Reads the Claude Code status JSON on stdin. Designed for a worktree-heavy,
-# parallel-agent workflow: the bottom line answers "where am I / which checkout
-# is this", the top line answers "how is this session going". Model name is
-# colored by family (opus=white, sonnet=purple, haiku=pink); context % uses a
-# green→yellow→red gradient; rate limits stay neutral until 80% then warn.
-# Git branch+dirty is cached per session_id (3s TTL) so the script stays fast
-# on every message.
+# parallel-agent workflow. Model name is colored by family (opus=white,
+# sonnet=purple, haiku=pink); context % uses a green→yellow→red gradient; rate
+# limits stay neutral until 80% then warn. Git branch+dirty is cached per
+# session_id (3s TTL) so the script stays fast on every message.
 #
 # Requires: jq, git, and a truecolor + unicode-capable terminal.
 
@@ -41,10 +44,12 @@ pr_num=$(jqr '.pr.number // empty')
 pr_state=$(jqr '.pr.review_state // empty')
 rl_5h=$(jqr '.rate_limits.five_hour.used_percentage // empty')
 rl_7d=$(jqr '.rate_limits.seven_day.used_percentage // empty')
+rl_5h_reset=$(jqr '.rate_limits.five_hour.resets_at // empty')
+rl_7d_reset=$(jqr '.rate_limits.seven_day.resets_at // empty')
 
 # ─── colors ──────────────────────────────────────────────────────────────────
 BOLD='\033[1m'; DIM='\033[2m'; ITALIC='\033[3m'; RESET='\033[0m'
-CYAN='\033[36m'; BLUE='\033[34m'; GREEN='\033[32m'
+CYAN='\033[36m'; BLUE='\033[34m'; GREEN='\033[32m'; GRAY='\033[38;2;130;130;130m'
 RED='\033[31m'; YELLOW='\033[33m'; MAGENTA='\033[35m'
 ORANGE='\033[38;2;255;140;0m'; REDORANGE='\033[38;2;255;69;0m'
 SEP="${DIM}│${RESET}"
@@ -64,12 +69,42 @@ fmt_hms() {
     if [ "$h" -gt 0 ]; then printf '%d:%02d:%02d' "$h" "$m" "$sec"
     else printf '%d:%02d' "$m" "$sec"; fi
 }
-# Rate-limit color: neutral until it matters, then warn. <80 default, 80+ yellow, 95+ red
-pct_color() {
-    local p=${1%.*}
-    if   [ "$p" -ge 95 ]; then printf '%b' "$RED"
-    elif [ "$p" -ge 80 ]; then printf '%b' "$YELLOW"
-    else printf '%b' "$RESET"; fi
+# Render one rate-limit window as: <label>(<time-left>) : <used%>(◇<exp%>).
+# Each parenthetical annotates the value right before it: time-left hugs the
+# label, glide slope hugs used%.
+#   used%     — absolute budget consumed.
+#   time-left — time remaining until this window resets, adaptive units:
+#               days (≥1d) → hours (≥1h) → minutes, so it never reads "0.5d".
+#   (◇exp%)   — glide slope: where you'd be right now if usage were evenly
+#               distributed across the window (= % of the window elapsed). The
+#               ◇ marks it as the target pace. Compare to used%: under it =
+#               headroom, over it = burning faster than even.
+# Flat/dim by default so it doesn't distract; colors only when used% crosses
+# the per-window threshold ($thresh → yellow, 95%+ → red). The pace delta
+# carries no color of its own — the warning is driven by absolute used%.
+# args: label  used%  resets_at  window_len_s  warn_threshold
+rl_window() {
+    local label=$1 used=$2 reset=$3 wlen=$4 thresh=$5
+    [ -z "$used" ] && return
+    local now remain left expected color u
+    now=$(date +%s)
+    if [ -n "$reset" ]; then
+        remain=$(( reset - now ))
+        [ "$remain" -lt 0 ] && remain=0
+        if   [ "$remain" -ge 86400 ]; then left=$(awk "BEGIN{printf \"%.1fd\", $remain/86400}")
+        elif [ "$remain" -ge 3600 ];  then left=$(awk "BEGIN{printf \"%.1fh\", $remain/3600}")
+        else                               left=$(awk "BEGIN{printf \"%dm\", $remain/60}"); fi
+        # expected usage now if evenly distributed = % of the window elapsed
+        expected=$(awk "BEGIN{el=($wlen-$remain)/$wlen*100; if(el>100)el=100; if(el<0)el=0; printf \"%.0f\", el}")
+    else
+        left="?"; expected="?"
+    fi
+    u=${used%.*}                              # integer part, for threshold compares
+    local udisp; udisp=$(printf '%.0f' "$used" 2>/dev/null)  # rounded, for display (kills float garbage)
+    if   [ "$u" -ge 95 ]      2>/dev/null; then color="$RED"
+    elif [ "$u" -ge "$thresh" ] 2>/dev/null; then color="$YELLOW"
+    else color="$DIM"; fi
+    printf '%b%s(%s) : %s%%(◇%s%%)%b' "$color" "$label" "$left" "$udisp" "$expected" "$RESET"
 }
 
 # ─── model name: claude-opus-4-8[1m] → opus-4.8·1M ───────────────────────────
@@ -127,7 +162,7 @@ elif [ "$ctx_pct" -le 90 ]; then r=255; g=$(((90 - ctx_pct) * 255 / 20)); b=0
 else r=255; g=0; b=0; fi
 CTX_COLOR=$(printf '\033[38;2;%d;%d;%dm' "$r" "$g" "$b")
 
-ctx_tok="$(fmtk "$ctx_in")/$(fmtk "$win_size")"
+ctx_tok="$(fmtk "$ctx_in")"   # tokens used; window size dropped (effectively always 1M)
 
 # ─── cost / time / effort / PR / rate limits ─────────────────────────────────
 cost_fmt=$(printf '%.2f' "$cost")
@@ -163,10 +198,10 @@ fi
 
 rl_seg=""
 if [ -n "$rl_5h" ] || [ -n "$rl_7d" ]; then
-    parts=""
-    [ -n "$rl_5h" ] && parts="$(pct_color "$rl_5h")5h-$(printf '%.0f' "$rl_5h")%${RESET}"
-    [ -n "$rl_7d" ] && parts="${parts:+$parts, }$(pct_color "$rl_7d")7d-$(printf '%.0f' "$rl_7d")%${RESET}"
-    rl_seg="$parts"
+    s5=$(rl_window "5h" "$rl_5h" "$rl_5h_reset" $((5 * 3600))  80)
+    s7=$(rl_window "7d" "$rl_7d" "$rl_7d_reset" $((7 * 86400)) 90)
+    rl_seg="$s5"
+    [ -n "$s7" ] && rl_seg="${rl_seg:+$rl_seg  }$s7"
 fi
 
 # ─── model segment (effort inside the brackets, family-colored) ──────────────
@@ -176,21 +211,34 @@ else
     model_seg="${BOLD}${MODEL_COLOR}[${model}]${RESET}"
 fi
 
-# ─── top line: model · context% · cost · lines · rate limits ─────────────────
-top="${model_seg}  ${CTX_COLOR}${ctx_pct}%${RESET}"
-top="${top}  ${DIM}\$${cost_fmt}/${ctx_tok}${RESET}"
-top="${top}  ${GREEN}+${lines_added}${RESET} ${RED}-${lines_removed}${RESET}"
-[ -n "$rl_seg" ] && top="${top}  ${rl_seg}"
+# ─── pane width (Claude sets $COLUMNS; fall back to tput, else assume wide) ───
+cols=${COLUMNS:-0}
+[ "$cols" -gt 0 ] 2>/dev/null || cols=$(tput cols 2>/dev/null || echo 0)
+[ "$cols" -gt 0 ] 2>/dev/null || cols=999
 
-# ─── bottom line: path · branch · worktree · PR · api time ───────────────────
-bottom="${BLUE}${path_disp}${RESET}"
+# ─── groups, in priority order ───────────────────────────────────────────────
+# A — core: context% then model (never dropped)
+core_seg="${CTX_COLOR}${ctx_pct}%${RESET}  ${model_seg}"
+
+# B — location: path · branch · worktree. Path full when wide, basename when tight.
+path_short="${current_dir##*/}"; [ -z "$path_short" ] && path_short="/"
+[ "$cols" -ge 150 ] && loc_path="$path_disp" || loc_path="$path_short"
+loc_seg="${GRAY}${loc_path}${RESET}"
 if [ -n "$branch" ]; then
     bseg="${GREEN}⎇ ${branch}${RESET}"
-    [ -n "$dirty" ] && bseg="${bseg} ${YELLOW}●${dirty}${RESET}"
-    bottom="${bottom}  ${bseg}"
+    [ -n "$dirty" ] && bseg="${bseg} ${DIM}●${dirty}${RESET}"
+    loc_seg="${loc_seg}  ${bseg}"
 fi
-[ -n "$git_worktree" ] && bottom="${bottom}  ${MAGENTA}⑂ ${git_worktree}${RESET}"
-[ -n "$pr_seg" ] && bottom="${bottom}  ${pr_seg}"
-bottom="${bottom}  ${api_seg}"
+[ -n "$git_worktree" ] && loc_seg="${loc_seg}  ${MAGENTA}⑂ ${git_worktree}${RESET}"
 
-printf '%b\n%b\n' "$top" "$bottom"
+# D — droppable stats: cost/tokens · diff · PR · api
+stats_seg="${DIM}\$${cost_fmt}/${ctx_tok}${RESET}  ${GREEN}+${lines_added}${RESET} ${RED}-${lines_removed}${RESET}"
+[ -n "$pr_seg" ] && stats_seg="${stats_seg}  ${pr_seg}"
+stats_seg="${stats_seg}  ${api_seg}"
+
+# ─── one adaptive line: add groups while the pane is wide enough ──────────────
+line="$core_seg"
+{ [ "$cols" -ge 64 ]  && [ -n "$rl_seg" ]; } && line="${line}   ${rl_seg}"    # C budget
+[ "$cols" -ge 92 ]  && line="${line}   ${loc_seg}"                            # B location
+[ "$cols" -ge 128 ] && line="${line}   ${stats_seg}"                          # D stats
+printf '%b\n' "$line"
