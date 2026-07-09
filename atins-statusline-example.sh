@@ -88,7 +88,7 @@ fmt_hms() {
 rl_window() {
     local label=$1 used=$2 reset=$3 wlen=$4 thresh=$5
     if [ -z "$used" ]; then
-        printf '%b%s(no data)%b' "$DIM" "$label" "$RESET"
+        printf '%b%s:(no data)%b' "$DIM" "$label" "$RESET"
         return
     fi
     local now remain left expected color u
