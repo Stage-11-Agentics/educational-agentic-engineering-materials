@@ -1,19 +1,20 @@
 #!/bin/bash
 # Claude Code Status Line — single adaptive line
 #
-#   ctx%  [model effort]   C: 7d/5h budget   B: ~/path ⎇branch ⑂wt   D: $cost/tok +/- api
-#   └─ A: always shown ─┘  └──────────────── dropped as the pane narrows ─────────────┘
+#   ctx% [model effort]   tok/$cost   C: 5h/7d budget   B: ⑂wt ⎇branch ~/path   D: +/- PR api_time
+#   └─ A: always shown ─┘  └────────────────────── dropped as the pane narrows ─────────────────┘
 #
 # One line, priority-ordered left→right. The pane width arrives in $COLUMNS
 # (Claude sets it; e.g. 291 in a full window). As the pane narrows the line
-# collapses right-to-left: drop D (stats), then B (location), then C (budget);
-# ctx% + model are never dropped. Path shrinks to a basename below ~150 cols.
+# collapses right-to-left: drop D (stats), then B (location), then C (budget),
+# then tokens/cost; ctx% + model are never dropped. Path shrinks to a basename
+# below ~150 cols.
 #
 # Reads the Claude Code status JSON on stdin. Designed for a worktree-heavy,
 # parallel-agent workflow. Model name is colored by family (opus=white,
-# sonnet=purple, haiku=pink); context % uses a green→yellow→red gradient; rate
-# limits stay neutral until 80% then warn. Git branch+dirty is cached per
-# session_id (3s TTL) so the script stays fast on every message.
+# sonnet=blue, haiku=pink, fable=purple); context % uses a green→yellow→red
+# gradient; rate limits stay neutral until 80% then warn. Git branch+dirty is
+# cached per session_id (3s TTL) so the script stays fast on every message.
 #
 # Requires: jq, git, and a truecolor + unicode-capable terminal.
 
@@ -50,6 +51,7 @@ rl_7d_reset=$(jqr '.rate_limits.seven_day.resets_at // empty')
 # ─── colors ──────────────────────────────────────────────────────────────────
 BOLD='\033[1m'; DIM='\033[2m'; ITALIC='\033[3m'; RESET='\033[0m'
 CYAN='\033[36m'; BLUE='\033[34m'; GREEN='\033[32m'; GRAY='\033[38;2;130;130;130m'
+WHITE='\033[97m'
 RED='\033[31m'; YELLOW='\033[33m'; MAGENTA='\033[35m'
 ORANGE='\033[38;2;255;140;0m'; REDORANGE='\033[38;2;255;69;0m'
 SEP="${DIM}│${RESET}"
@@ -104,7 +106,7 @@ rl_window() {
     if   [ "$u" -ge 95 ]      2>/dev/null; then color="$RED"
     elif [ "$u" -ge "$thresh" ] 2>/dev/null; then color="$YELLOW"
     else color="$DIM"; fi
-    printf '%b%s(%s) : %s%%(◇%s%%)%b' "$color" "$label" "$left" "$udisp" "$expected" "$RESET"
+    printf '%b%s(%s): %s%%(◇%s%%)%b' "$color" "$label" "$left" "$udisp" "$expected" "$RESET"
 }
 
 # ─── model name: claude-opus-4-8[1m] → opus-4.8·1M ───────────────────────────
@@ -115,10 +117,12 @@ m=$(printf '%s' "$m" | sed -E 's/-([0-9]+)-([0-9]+)-[0-9]{8}$/-\1.\2/; s/-([0-9]
 model="${m}${one_m}"
 [ -z "$model" ] && model="$model_disp"
 
-# model-family color: opus=white, sonnet=purple, haiku=pink, else cyan
+# model-family color: opus=white, sonnet=periwinkle, haiku=pink, fable=purple, else cyan
+is_fable=0
 case "$model_raw$model_disp" in
+    *[Ff]able*)  MODEL_COLOR='\033[38;2;175;95;255m'; is_fable=1;;  # purple
     *[Oo]pus*)   MODEL_COLOR='\033[97m';;             # bright white
-    *[Ss]onnet*) MODEL_COLOR='\033[38;2;180;130;255m';;  # purple
+    *[Ss]onnet*) MODEL_COLOR='\033[38;2;90;160;255m';;   # blue (purple reserved for fable)
     *[Hh]aiku*)  MODEL_COLOR='\033[38;2;255;128;200m';;  # pink
     *)           MODEL_COLOR="$CYAN";;
 esac
@@ -166,7 +170,7 @@ ctx_tok="$(fmtk "$ctx_in")"   # tokens used; window size dropped (effectively al
 
 # ─── cost / time / effort / PR / rate limits ─────────────────────────────────
 cost_fmt=$(printf '%.2f' "$cost")
-api_seg="$(fmt_hms $((api_ms / 1000))) ${DIM}api${RESET}"
+api_seg="$(fmt_hms $((api_ms / 1000))) ${DIM}api_time${RESET}"
 
 eff_seg=""
 if [ -n "$effort" ]; then
@@ -201,14 +205,17 @@ if [ -n "$rl_5h" ] || [ -n "$rl_7d" ]; then
     s5=$(rl_window "5h" "$rl_5h" "$rl_5h_reset" $((5 * 3600))  80)
     s7=$(rl_window "7d" "$rl_7d" "$rl_7d_reset" $((7 * 86400)) 90)
     rl_seg="$s5"
-    [ -n "$s7" ] && rl_seg="${rl_seg:+$rl_seg  }$s7"
+    [ -n "$s7" ] && rl_seg="${rl_seg:+$rl_seg }$s7"
 fi
 
 # ─── model segment (effort inside the brackets, family-colored) ──────────────
+# Every family uses the plain form: [opus-4.8·1M high]. Fable stays purple
+# (MODEL_COLOR) but no longer carries emoji accents.
+name_open="["; name_close=" "
 if [ -n "$eff_seg" ]; then
-    model_seg="${BOLD}${MODEL_COLOR}[${model}${RESET} ${eff_seg}${BOLD}${MODEL_COLOR}]${RESET}"
+    model_seg="${BOLD}${MODEL_COLOR}${name_open}${model}${name_close}${RESET}${eff_seg}${BOLD}${MODEL_COLOR}]${RESET}"
 else
-    model_seg="${BOLD}${MODEL_COLOR}[${model}]${RESET}"
+    model_seg="${BOLD}${MODEL_COLOR}${name_open}${model}${name_close%[[:space:]]}]${RESET}"
 fi
 
 # ─── pane width (Claude sets $COLUMNS; fall back to tput, else assume wide) ───
@@ -220,25 +227,35 @@ cols=${COLUMNS:-0}
 # A — core: context% then model (never dropped)
 core_seg="${CTX_COLOR}${ctx_pct}%${RESET}  ${model_seg}"
 
-# B — location: path · branch · worktree. Path full when wide, basename when tight.
+# B — location: worktree · branch · path (worktree/path swapped). Path full when wide,
+# basename when tight. Built left→right with separators only between present parts.
 path_short="${current_dir##*/}"; [ -z "$path_short" ] && path_short="/"
 [ "$cols" -ge 150 ] && loc_path="$path_disp" || loc_path="$path_short"
-loc_seg="${GRAY}${loc_path}${RESET}"
+loc_seg=""; loc_sep=""
+if [ -n "$git_worktree" ]; then
+    loc_seg="${MAGENTA}⑂ ${git_worktree}${RESET}"; loc_sep="  "
+fi
 if [ -n "$branch" ]; then
     bseg="${GREEN}⎇ ${branch}${RESET}"
     [ -n "$dirty" ] && bseg="${bseg} ${DIM}●${dirty}${RESET}"
-    loc_seg="${loc_seg}  ${bseg}"
+    loc_seg="${loc_seg}${loc_sep}${bseg}"; loc_sep="  "
 fi
-[ -n "$git_worktree" ] && loc_seg="${loc_seg}  ${MAGENTA}⑂ ${git_worktree}${RESET}"
+loc_seg="${loc_seg}${loc_sep}${GRAY}${loc_path}${RESET}"
 
-# D — droppable stats: cost/tokens · diff · PR · api
-stats_seg="${DIM}\$${cost_fmt}/${ctx_tok}${RESET}  ${GREEN}+${lines_added}${RESET} ${RED}-${lines_removed}${RESET}"
+# tokens/cost — its own group, placed right of the model bracket, ahead of the
+# budget (C). Order is tokens/$cost; tokens are flat white (high-priority read),
+# cost stays dim.
+tokcost_seg="${WHITE}${ctx_tok}${RESET}${DIM}/\$${cost_fmt}${RESET}"
+
+# D — droppable stats: diff · PR · api (tokens/cost moved out to its own group above)
+stats_seg="${GREEN}+${lines_added}${RESET} ${RED}-${lines_removed}${RESET}"
 [ -n "$pr_seg" ] && stats_seg="${stats_seg}  ${pr_seg}"
 stats_seg="${stats_seg}  ${api_seg}"
 
 # ─── one adaptive line: add groups while the pane is wide enough ──────────────
 line="$core_seg"
-{ [ "$cols" -ge 64 ]  && [ -n "$rl_seg" ]; } && line="${line}   ${rl_seg}"    # C budget
+[ "$cols" -ge 64 ]  && line="${line}  ${tokcost_seg}"                         # tokens/cost (right of model)
+{ [ "$cols" -ge 88 ]  && [ -n "$rl_seg" ]; } && line="${line}   ${rl_seg}"    # C budget
 [ "$cols" -ge 92 ]  && line="${line}   ${loc_seg}"                            # B location
 [ "$cols" -ge 128 ] && line="${line}   ${stats_seg}"                          # D stats
 printf '%b\n' "$line"

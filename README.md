@@ -177,24 +177,25 @@ A single adaptive status line from the operator's live `~/.claude/`. Claude Code
 
 ```
 # wide pane (≈150+ cols) — everything
-18%  [opus-4.8·1M high]   5h(3.5h) : 53%(◇30%)  7d(5.0d) : 39%(◇29%)   ~/Projects/Gregorovich/projects/acetate  ⎇ main ●44   $1.23/184k  +156 -23  2:23 api
+18%  [opus-4.8·1M high]  184k/$1.23   5h(3.5h): 53%(◇30%) 7d(5.0d): 39%(◇29%)   ⎇ main ●44  ~/Projects/Gregorovich/projects/acetate   +156 -23  2:23 api_time
 
 # ~110 cols — stats dropped, path shrinks to a basename
-18%  [opus-4.8·1M high]   5h(3.5h) : 53%(◇30%)  7d(5.0d) : 39%(◇29%)   acetate  ⎇ main ●44
+18%  [opus-4.8·1M high]  184k/$1.23   5h(3.5h): 53%(◇30%) 7d(5.0d): 39%(◇29%)   ⎇ main ●44  acetate
 
-# ~80 cols — only the core and the rate-limit budget survive
-18%  [opus-4.8·1M high]   5h(3.5h) : 53%(◇30%)  7d(5.0d) : 39%(◇29%)
+# ~80 cols — only the core and the token/cost readout survive
+18%  [opus-4.8·1M high]  184k/$1.23
 
 # narrow split — context and model never drop
 18%  [opus-4.8·1M high]
 ```
 
-Four groups, in priority order:
+Five groups, in priority order:
 
-- **Core** (never dropped) — context-window usage with a green→yellow→red gradient, then the model name and reasoning effort inside the brackets. Model colored by family (opus white, sonnet purple, haiku pink); effort styled by intensity (italic below high, bold above, and never alarm-red).
-- **Budget** — the 5-hour and 7-day rate-limit windows, each rendered `window(time-left) : used%(◇pace%)`. The `◇` is a **glide slope**: where you'd be if usage were spread evenly across the window. Under it is headroom; over it means you're burning faster than even. Dim until `used%` crosses the per-window threshold (yellow, red at 95%), so it stays quiet until it matters.
-- **Location** — working directory (full path when wide, basename when tight), git branch with a dirty-file count, and the worktree name when you're inside a linked `git worktree` — the field most off-the-shelf status lines miss, and what tells parallel agents apart.
-- **Stats** — session cost and tokens, lines added/removed, open PR number + review state, and API time. First to go when space is tight.
+- **Core** (never dropped) — context-window usage with a green→yellow→red gradient, then the model name and reasoning effort inside the brackets. Model colored by family (opus white, sonnet blue, haiku pink, fable purple); effort styled by intensity (italic below high, bold above, and never alarm-red).
+- **Tokens/cost** — token count in flat white (the higher-priority read), `$cost` dimmed alongside it. Sits immediately right of the model bracket.
+- **Budget** — the 5-hour and 7-day rate-limit windows, each rendered `window(time-left): used%(◇pace%)`. The `◇` is a **glide slope**: where you'd be if usage were spread evenly across the window. Under it is headroom; over it means you're burning faster than even. Dim until `used%` crosses the per-window threshold (yellow, red at 95%), so it stays quiet until it matters.
+- **Location** — git worktree name, branch with a dirty-file count, and working directory (full path when wide, basename when tight) — the worktree field is what tells parallel agents apart, the thing most off-the-shelf status lines miss.
+- **Stats** — lines added/removed, open PR number + review state, and API time (`api_time`). First to go when space is tight.
 
 Almost everything is read straight from the JSON Claude Code pipes to the script: `workspace.git_worktree`, `context_window.used_percentage`, `effort.level`, `rate_limits.*` (including `resets_at`, for the time-left and glide-slope math), `pr.*`. The only shell-out is the git branch and dirty count, cached per `session_id` on a three-second TTL so it stays fast even though it fires after every message. Absent fields — no worktree, no open PR, no rate limits on a non-subscription account — simply drop out, so the line degrades cleanly anywhere.
 
