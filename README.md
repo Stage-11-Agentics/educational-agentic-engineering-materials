@@ -177,10 +177,10 @@ A single adaptive status line from the operator's live `~/.claude/`. Claude Code
 
 ```
 # wide pane (≈150+ cols) — everything
-18%  [opus-4.8·1M high]  184k/$1.23   5h(3.5h): 53%(◇30%) 7d(5.0d): 39%(◇29%)   ⎇ main ●44  ~/Projects/Gregorovich/projects/acetate   +156 -23  2:23 api_time
+18%  [opus-4.8·1M high]  184k/$1.23  5h(3.5h): 53%(◇30%) 7d(5.0d): 39%(◇29%)   ⎇ main ●44  ~/Projects/Gregorovich/projects/acetate   +156 -23  2:23 api_time
 
 # ~110 cols — stats dropped, path shrinks to a basename
-18%  [opus-4.8·1M high]  184k/$1.23   5h(3.5h): 53%(◇30%) 7d(5.0d): 39%(◇29%)   ⎇ main ●44  acetate
+18%  [opus-4.8·1M high]  184k/$1.23  5h(3.5h): 53%(◇30%) 7d(5.0d): 39%(◇29%)   ⎇ main ●44  acetate
 
 # ~80 cols — only the core and the token/cost readout survive
 18%  [opus-4.8·1M high]  184k/$1.23

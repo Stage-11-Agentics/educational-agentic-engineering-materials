@@ -255,7 +255,7 @@ stats_seg="${stats_seg}  ${api_seg}"
 # ─── one adaptive line: add groups while the pane is wide enough ──────────────
 line="$core_seg"
 [ "$cols" -ge 64 ]  && line="${line}  ${tokcost_seg}"                         # tokens/cost (right of model)
-{ [ "$cols" -ge 88 ]  && [ -n "$rl_seg" ]; } && line="${line}   ${rl_seg}"    # C budget
+{ [ "$cols" -ge 88 ]  && [ -n "$rl_seg" ]; } && line="${line}  ${rl_seg}"     # C budget
 [ "$cols" -ge 92 ]  && line="${line}   ${loc_seg}"                            # B location
 [ "$cols" -ge 128 ] && line="${line}   ${stats_seg}"                          # D stats
 printf '%b\n' "$line"
