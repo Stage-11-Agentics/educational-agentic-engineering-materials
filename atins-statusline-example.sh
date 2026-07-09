@@ -1,14 +1,11 @@
 #!/bin/bash
-# Claude Code Status Line — single adaptive line
+# Claude Code Status Line — single line, always shown in full
 #
 #   ctx% [model effort]   tok/$cost   C: 5h/7d budget   B: ⑂wt ⎇branch ~/path   D: +/- PR api_time
-#   └─ A: always shown ─┘  └────────────────────── dropped as the pane narrows ─────────────────┘
 #
-# One line, priority-ordered left→right. The pane width arrives in $COLUMNS
-# (Claude sets it; e.g. 291 in a full window). As the pane narrows the line
-# collapses right-to-left: drop D (stats), then B (location), then C (budget),
-# then tokens/cost; ctx% + model are never dropped. Path shrinks to a basename
-# below ~150 cols.
+# One line, left→right, every group always present regardless of pane width.
+# Path shrinks to a basename below ~150 cols ($COLUMNS, set by Claude); that's
+# the only width-dependent formatting left — no group is ever dropped.
 #
 # Reads the Claude Code status JSON on stdin. Designed for a worktree-heavy,
 # parallel-agent workflow. Model name is colored by family (opus=white,
@@ -251,10 +248,10 @@ stats_seg="${GREEN}+${lines_added}${RESET} ${RED}-${lines_removed}${RESET}"
 [ -n "$pr_seg" ] && stats_seg="${stats_seg}  ${pr_seg}"
 stats_seg="${stats_seg}  ${api_seg}"
 
-# ─── one adaptive line: add groups while the pane is wide enough ──────────────
+# ─── one line, always shown in full regardless of pane width ─────────────────
 line="$core_seg"
-[ "$cols" -ge 64 ]  && line="${line}  ${tokcost_seg}"                         # tokens/cost (right of model)
-{ [ "$cols" -ge 88 ]  && [ -n "$rl_seg" ]; } && line="${line}  ${rl_seg}"     # C budget
-[ "$cols" -ge 92 ]  && line="${line}   ${loc_seg}"                            # B location
-[ "$cols" -ge 128 ] && line="${line}   ${stats_seg}"                          # D stats
+line="${line}  ${tokcost_seg}"                                                # tokens/cost (right of model)
+line="${line}  ${rl_seg}"                                                     # C budget
+line="${line}   ${loc_seg}"                                                   # B location
+line="${line}   ${stats_seg}"                                                # D stats
 printf '%b\n' "$line"
