@@ -87,7 +87,10 @@ fmt_hms() {
 # args: label  used%  resets_at  window_len_s  warn_threshold
 rl_window() {
     local label=$1 used=$2 reset=$3 wlen=$4 thresh=$5
-    [ -z "$used" ] && return
+    if [ -z "$used" ]; then
+        printf '%b%s: no data%b' "$DIM" "$label" "$RESET"
+        return
+    fi
     local now remain left expected color u
     now=$(date +%s)
     if [ -n "$reset" ]; then
@@ -200,13 +203,9 @@ if [ -n "$pr_num" ]; then
     pr_seg="${pc}PR#${pr_num}${ps:+ $ps}${RESET}"
 fi
 
-rl_seg=""
-if [ -n "$rl_5h" ] || [ -n "$rl_7d" ]; then
-    s5=$(rl_window "5h" "$rl_5h" "$rl_5h_reset" $((5 * 3600))  80)
-    s7=$(rl_window "7d" "$rl_7d" "$rl_7d_reset" $((7 * 86400)) 90)
-    rl_seg="$s5"
-    [ -n "$s7" ] && rl_seg="${rl_seg:+$rl_seg }$s7"
-fi
+s5=$(rl_window "5h" "$rl_5h" "$rl_5h_reset" $((5 * 3600))  80)
+s7=$(rl_window "7d" "$rl_7d" "$rl_7d_reset" $((7 * 86400)) 90)
+rl_seg="$s5 $s7"
 
 # ─── model segment (effort inside the brackets, family-colored) ──────────────
 # Every family uses the plain form: [opus-4.8·1M high]. Fable stays purple
