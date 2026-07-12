@@ -13,6 +13,8 @@ This is what we actually run, every day. Not a sanitized demo. The files in this
 | [`commands/trident-code-review.md`](commands/trident-code-review.md) | Nine-reviewer multi-model code review. Claude + Codex + Gemini, three lenses each, four parallel synthesizers, one validated machine-actionable fix plan. |
 | [`commands/trident-plan-review.md`](commands/trident-plan-review.md) | Same shape as trident code review, pointed at a plan or design document instead of a diff. |
 | [`agents/`](agents/) | The lens prompt files the trident commands compose — `CodeReview-{Standard,Critical,Evolutionary}.md` and `PlanReview-{Standard,Adversarial,Evolutionary}.md`. Plain markdown, not slash commands; trident reads them from `~/.claude/agents/` by path. (For a single day-to-day review, use Claude Code's built-in `/code-review`.) |
+| [`skills/lattice-orchestrator/`](skills/lattice-orchestrator/) | The build engine. Turns a finished spec + build plan into tickets, dispatches a fleet of delegator agents that produce one PR per ticket, and closes with a terminal audit run by an agent that read the spec cold. Overnight-capable. |
+| [`skills/lattice-delegate/`](skills/lattice-delegate/) | The single-ticket sibling. One ticket, one dedicated pane, one isolated worktree, plan → implement → review → validate → PR. What the orchestrator dispatches N of; useful on its own when you have one ticket, not a run. |
 | [`atins-global-claude-md-example.md`](atins-global-claude-md-example.md) | One operator's global `~/.claude/CLAUDE.md`. Loads into every Claude Code session on the machine. The headline pattern: language overloading. |
 | [`commands/capture-skill.md`](commands/capture-skill.md) | Extract reusable knowledge from a conversation into a `CLAUDE.md` file or a new slash command. The flywheel for a self-improving codebase. |
 | [`atins-statusline-example.sh`](atins-statusline-example.sh) | One operator's single adaptive Claude Code status line. Priority-ordered, collapses right-to-left as the pane narrows. Git worktree-aware, model colored by family, context + rate-limit gradients with a usage glide slope. |
@@ -117,6 +119,67 @@ cp agents/PlanReview-Evolutionary.md  ~/.claude/agents/
 # Optional Codex hardlinks
 ln ~/.claude/commands/trident-plan-review.md ~/.codex/prompts/trident-plan-review.md 2>/dev/null
 ```
+
+────
+
+## Lattice Orchestration
+
+The build engine. Trident reviews the work; the orchestrator *does* the work — it takes a finished build contract and runs a fleet until there is one PR per ticket and an audit saying whether they add up to what was specified.
+
+The contract arrives written (`SPEC.md` with numbered acceptance criteria, `EVALUATION.md` saying how each one gets verified and by whom, `BUILDPLAN.md` with the ticket breakdown). This skill does not plan and does not write that contract — deliberately, because it is going to be audited against it.
+
+```
+lattice-orchestrator
+├── Phase 0: Intake & ticketing              [Orchestrator]
+│     ├── Contract checks (validate, never author — flag gaps upstream)
+│     ├── Pin install facts (status vocabulary, git remote name)
+│     ├── Mint one Lattice ticket per build-plan item, dependencies linked
+│     └── Write the validation plan — every criterion, one row, tagged
+│           pre-merge-static (an agent can audit it) or post-merge-smoke (a human must)
+├── Phase 1: Dispatch                        [Orchestrator → N delegators]
+│     ├── One delegator per ticket, own pane, own git worktree
+│     ├── Each walks plan → implement → review → validate → PR
+│     ├── Press-ahead: spawn dependents at review, not at merge
+│     └── Escalations re-surfaced every tick while they stand
+└── Phase 2: Terminal validation             [Result Validator — fresh session]
+      ├── Reads SPEC and the validation plan cold, no prior context
+      ├── Walks every pre-merge-static row exactly as written
+      └── Validation report + the operator's post-merge smoke checklist
+```
+
+**Separation of duties is the whole design.** Three context-isolated seats: the Orchestrator dispatches and *never implements*; the delegators build; the Result Validator audits against a spec its builders did not write, in a fresh session, because an agent grading its own homework grades generously. The validation plan is written before any code exists and is treated as a contract — the validator may not invent rows, substitute faster methods, or silently skip.
+
+Four patterns here transfer even if you never install Lattice:
+
+- **Verified state, not reported state.** Never act on what an agent *said* happened. The branch exists remotely or it doesn't (`git ls-remote`); the PR is non-empty or it isn't (`head.sha != base.sha`); the merge landed or it didn't (re-GET and assert `.merged == true`). A silently-failed push is the number one false-completion mode in autonomous runs.
+- **A fired review is not a finished review.** Review gates fail *open*: the runner can die while its state file still says `running` forever, and a naive completion check passes on any review evidence in the ticket's lifetime — including a FAIL artifact from a previous rework cycle. Require evidence that postdates *this* cycle, names the reviewed commit, and carries a PASS.
+- **Press-ahead.** Spawn dependent work when its dependency reaches *review*, not merge. Children branch off the in-review parent and inherit its interfaces import-stable. This is most of the wall-clock savings in a multi-wave run.
+- **The footgun catalog.** When a new silent-failure mode appears mid-run, it goes in the run state *and* into every subsequent boot prompt — a catalog entry without a prompt update guarantees the next agent hits the same wall. Mitigated three times, or seen across two runs, and it graduates into the skill itself, with the war story kept in [`runs-ledger.md`](skills/lattice-orchestrator/runs-ledger.md) so the rule keeps its evidence.
+
+The skill is four files: [`SKILL.md`](skills/lattice-orchestrator/SKILL.md) is the always-loaded spine; the three `references/` files are per-seat playbooks — [`intake.md`](skills/lattice-orchestrator/references/intake.md) (Phase 0 mechanics), [`orchestrator.md`](skills/lattice-orchestrator/references/orchestrator.md) (the dispatch loop, boot templates, worktree discipline, merge machinery, recovery, footguns), [`result-validator.md`](skills/lattice-orchestrator/references/result-validator.md) (the terminal audit protocol and report template). Each is loaded only by the agent sitting in that seat. That progressive-disclosure shape is itself worth stealing: a 90-line spine that always loads, and the operational depth pulled in only by whoever needs it.
+
+### Requirements, and what degrades
+
+Two Stage 11 tools, both open source: [**Lattice**](https://github.com/Stage-11-Agentics/lattice) (the ticket board and the review/validation CLI — this skill is named for its substrate, and a different substrate would be a different skill) and [**c11**](https://github.com/Stage-11-Agentics/c11) (the terminal multiplexer that gives every delegator a visible pane you can scrub). Outside c11 the run still works — the delegators need any harness that can spawn parallel sub-sessions — but the workspace geometry, the live board surface, and the pane-scrubbing all degrade to whatever your harness offers.
+
+The upstream stages that *author* the contract (Stage 11's Tone workflow — initiation, prototype, architecture) are not published here; `SKILL.md` references them because that is how it actually runs. Nothing stops you: hand it a `SPEC.md`, an `EVALUATION.md`, and a `BUILDPLAN.md` from any source, including your own hand, and it runs standalone. If those artifacts don't exist yet, the skill's correct behavior is to refuse and say so.
+
+### Install
+
+```bash
+cp -r skills/lattice-orchestrator ~/.claude/skills/
+cp -r skills/lattice-delegate     ~/.claude/skills/   # the single-ticket sibling
+```
+
+### Run It
+
+From a repo with a build contract in it:
+
+```
+orchestrate this
+```
+
+Phase 0 is a short config dialogue — autonomy level, how many delegators run concurrently, whether PRs auto-merge or stop at review — with defaults auto-suggested from the size of the plan. Then it tells you exactly what Phase 1 will look like (how many panes appear, how escalations reach you, what "done" means) before it spawns anything. Set autonomy to Fully Autonomous and it will run a plan overnight and have a validation report waiting.
 
 ────
 
