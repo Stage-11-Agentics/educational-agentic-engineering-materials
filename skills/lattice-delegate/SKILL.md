@@ -1,19 +1,19 @@
 ---
 name: lattice-delegate
-description: Execute a Lattice ticket end-to-end via an orchestrator+delegator pattern in c11. The orchestrator pane stays with the operator; a delegator spawned in a sibling pane walks the ticket through plan → implement → review → validate → handoff, spawning a surface per phase. Invoke when the operator says "execute this ticket," "delegate <TICKET>," "run this ticket end-to-end," or similar — any time the work deserves its own dedicated pane, an isolated worktree, and a clean audit trail on the ticket rather than happening inline in the main thread.
+description: Execute a Lattice ticket end-to-end via an orchestrator+delegator pattern in c11. The orchestrator area stays with the operator; a delegator spawned in a sibling area walks the ticket through plan → implement → review → validate → handoff, spawning a tab per phase. Invoke when the operator says "execute this ticket," "delegate <TICKET>," "run this ticket end-to-end," or similar — any time the work deserves its own dedicated area, an isolated worktree, and a clean audit trail on the ticket rather than happening inline in the main thread.
 ---
 
 # Lattice Delegate (Stage 11)
 
-A pattern for driving a single Lattice ticket through its full lifecycle with dedicated panes, an isolated git worktree, and sub-agents per phase. The delegator is the single point of contact for the human; the ticket is the shared comms bus; the worktree is the blast-radius boundary.
+A pattern for driving a single Lattice ticket through its full lifecycle with dedicated areas, an isolated git worktree, and sub-agents per phase. The delegator is the single point of contact for the human; the ticket is the shared comms bus; the worktree is the blast-radius boundary.
 
 This skill is **Stage 11-specific for now** — it assumes Lattice + c11 are both in play. Promote to a generic skill when the pattern proves itself outside Stage 11.
 
 ## Roles
 
-- **Orchestrator** — the chat that sets up the delegation and then runs an active polling loop. Creates the worktree, splits a pane, seeds the delegator surface, posts a framing Lattice comment. After setup, the orchestrator schedules periodic wake-ups (`ScheduleWakeup`) and surfaces meaningful ticket transitions to the operator — silent watching is a documented failure mode (see *Active orchestrator watch* below). The work itself happens in the delegator pane; the orchestrator's job is to make sure the operator hears about it.
-- **Delegator** — a new Claude Code session spawned in a sibling pane. Walks the ticket's lifecycle, spawning one sibling surface per phase inside its own pane. **The delegator is the primary human interface** — when the human scrubs the delegation, they read the delegator pane; when the human has a question or needs to intervene, they talk to the delegator; when the work escalates, the delegator is the one who surfaces the escalation.
-- **Phase sub-agents** — spawned by the delegator. One per phase: **Plan**, **Impl**, **Translator** (only if user-facing strings change and the repo is localized), **Review**, **Validate**. Each lives as a tab in the delegator's pane so the operator can scrub any of them in one vertical slice.
+- **Orchestrator** — the chat that sets up the delegation and then runs an active polling loop. Creates the worktree, splits an area, seeds the delegator tab, posts a framing Lattice comment. After setup, the orchestrator schedules periodic wake-ups (`ScheduleWakeup`) and surfaces meaningful ticket transitions to the operator — silent watching is a documented failure mode (see *Active orchestrator watch* below). The work itself happens in the delegator area; the orchestrator's job is to make sure the operator hears about it.
+- **Delegator** — a new Claude Code session spawned in a sibling area. Walks the ticket's lifecycle, spawning one sibling tab per phase inside its own area. **The delegator is the primary human interface** — when the human scrubs the delegation, they read the delegator area; when the human has a question or needs to intervene, they talk to the delegator; when the work escalates, the delegator is the one who surfaces the escalation.
+- **Phase sub-agents** — spawned by the delegator. One per phase: **Plan**, **Impl**, **Translator** (only if user-facing strings change and the repo is localized), **Review**, **Validate**. Each lives as a tab in the delegator's area so the operator can scrub any of them in one vertical slice.
 - **The ticket** — the shared comms bus. Every agent posts `lattice comment` at meaningful milestones. The orchestrator reads the trail via `lattice show <id>` or `lattice watch --task <id>`.
 
 ## Core principles
@@ -22,11 +22,11 @@ These shape every decision downstream. If a section below seems to conflict with
 
 ### The delegator is the human interface
 
-The human watches and interacts with exactly one pane: the delegator's. Everything else is internal machinery. This has real consequences:
+The human watches and interacts with exactly one area: the delegator's. Everything else is internal machinery. This has real consequences:
 
-- **Sub-agents never message the human directly.** They write to the ticket, set their surface status, and stop. If they have a question or recommendation, it's a Lattice comment addressed to the delegator — not chat text addressed to the human.
+- **Sub-agents never message the human directly.** They write to the ticket, set their tab status, and stop. If they have a question or recommendation, it's a Lattice comment addressed to the delegator — not chat text addressed to the human.
 - **Only the delegator escalates.** `needs_human` status, operator decisions, pauses for clarification — all of these flow through the delegator. A Plan or Review sibling that discovers an ambiguity flags it to the delegator (via the ticket), and the delegator decides whether to resolve, spawn another sub-agent, or escalate to the human.
-- **The delegator summarizes.** When the human checks in, they read the delegator pane and get a coherent picture of where the ticket is and what's next. The delegator owns that picture — it's not assembled from scraping 9 sibling tabs.
+- **The delegator summarizes.** When the human checks in, they read the delegator area and get a coherent picture of where the ticket is and what's next. The delegator owns that picture — it's not assembled from scraping 9 sibling tabs.
 - **The delegator is also the last-mile communicator.** When the PR is ready, when a decision is needed, when something has gone sideways — the delegator's most recent message is what the human sees.
 
 Sub-agents are *internal*. The delegator is the membrane between the human and the work.
@@ -82,7 +82,7 @@ Every phase inherits the prior phase's claimed work. Before executing what the p
 
 ### Lattice status is the durable record — bump it as you go, not at the end
 
-Surface metadata (`c11 set-metadata --key status`) is local and ephemeral — it tells the operator what the *pane* is doing right now. The Lattice ticket status is a different thing: it's what the operator, the orchestrator, sibling delegators, and every future reader use to know where the *work* is. **Bump the ticket status at every phase transition, immediately, before you spawn the next sub-agent.** Never batch status updates for the end. Never assume opening a PR implies `review`.
+Tab metadata (`c11 set-metadata --key status`) is local and ephemeral — it tells the operator what the *area* is doing right now. The Lattice ticket status is a different thing: it's what the operator, the orchestrator, sibling delegators, and every future reader use to know where the *work* is. **Bump the ticket status at every phase transition, immediately, before you spawn the next sub-agent.** Never batch status updates for the end. Never assume opening a PR implies `review`.
 
 Concrete invariant: before the Plan sub-agent starts, status must be `in_planning`. Before Impl, `planned`. Before Review, `review` is already correct (Impl ends by transitioning there). Before opening the PR, verify `lattice show <ticket>` reports the expected status — if it doesn't, you missed a transition; fix it before pushing further.
 
@@ -92,10 +92,10 @@ Failure mode this prevents: delegator drives 14 commits + opens PR, but ticket s
 
 ## Two-line sidebar convention
 
-Every surface in the delegation — orchestrator, delegator, every phase sub-agent — uses a two-line read in the c11 sidebar:
+Every tab in the delegation — orchestrator, delegator, every phase sub-agent — uses a two-line read in the c11 sidebar:
 
 - **Tab title (first line)**: `<TICKET> <ROLE>` or `<TICKET> <ROLE> :: <PHASE>`. e.g. `<TICKET> Orchestrator`, `<TICKET> Delegator`, `<TICKET> Delegator :: Plan`.
-- **Description (second line)**: the ticket's **purpose** — a one-line restatement of what the ticket is *for* (the `title` field from `lattice show`). The same purpose string across every surface in the delegation, so scrubbing the sidebar tells you what the work is *about*, not just who's doing what role.
+- **Description (second line)**: the ticket's **purpose** — a one-line restatement of what the ticket is *for* (the `title` field from `lattice show`). The same purpose string across every tab in the delegation, so scrubbing the sidebar tells you what the work is *about*, not just who's doing what role.
 
 The first line answers *who am I and where am I in the dance*. The second line answers *what are we actually trying to do*. Never conflate them. Never use the description to narrate orchestration meta-state — that lives in metadata (`role`, `status`, `progress`) and is already visible elsewhere.
 
@@ -103,18 +103,18 @@ The first line answers *who am I and where am I in the dance*. The second line a
 
 Operator cues:
 - "Execute this ticket" / "run this ticket end-to-end" / "delegate it"
-- "Create an orchestrator pane for <TICKET>" / any setup that mentions an orchestrator+delegator split
+- "Create an orchestrator area for <TICKET>" / any setup that mentions an orchestrator+delegator split
 - "Walk this through the Lattice process"
 
 Pre-flight:
-- `CMUX_SHELL_INTEGRATION=1` (you are in c11). If not, bail — this pattern depends on c11 panes.
+- `C11_SHELL_INTEGRATION=1` (you are in c11). If not, bail — this pattern depends on c11 areas.
 - The target ticket exists: `lattice show <TICKET>` returns a task.
 - Load the `c11` and `lattice` skills if not already loaded.
 - The target repo has a `CLAUDE.md` the delegator can read for project-specific conventions (typing-latency paths, localization policy, testing policy, release flow, validation flow, etc.). Don't duplicate those rules here — point at CLAUDE.md.
 
 ## Setup playbook
 
-Run these in order from the orchestrator pane. All c11 flags follow the "always pass `--surface`/`--workspace` explicitly on surface writes" convention from the c11 skill.
+Run these in order from the orchestrator area. All c11 flags follow the "always pass `--tab`/`--workspace` explicitly on tab writes" convention from the c11 skill.
 
 ```bash
 TICKET="<TICKET>"                   # short ID or ULID; both resolve. ULID is canonical, prefer it in sub-agent prompts.
@@ -122,15 +122,15 @@ TICKET_LOWER="$(echo "$TICKET" | tr '[:upper:]' '[:lower:]')"   # used as a file
 ACTOR="agent:<model>-<ticket>"      # unique per delegation so actor trails don't collide
 
 # Fetch the ticket's title plus its parent ticket (if any), composed into a
-# multi-line description — used on every surface in this delegation
+# multi-line description — used on every tab in this delegation
 # (orchestrator, delegator, every phase sub-agent) so the c11 sidebar grounds
 # the operator in the parent context, the immediate ticket, and the phase role.
-# See the c11 skill's "Multi-line descriptions for ticket-flow surfaces" section.
+# See the c11 skill's title and description conventions.
 TITLE="$(lattice show "$TICKET" --json | jq -r '.data.title // empty')"
 PARENT_ID="$(lattice show "$TICKET" --json | jq -r '.data.relationships_out[]? | select(.type=="related_to" or .type=="subtask_of") | .target_task_id' | head -1)"
 PARENT_TITLE="$([ -n "$PARENT_ID" ] && lattice show "$PARENT_ID" --json 2>/dev/null | jq -r '.data.title // empty')"
 PURPOSE="$([ -n "$PARENT_TITLE" ] && printf '%s\n' "$PARENT_TITLE.")$TICKET — $TITLE."
-# When you set surface descriptions, append the phase role on a third line:
+# When you set tab descriptions, append the phase role on a third line:
 #   "$PURPOSE\nDelegator: orchestrating Plan → Impl → Review → PR."
 
 # 1. Create an isolated worktree for the delegation.
@@ -162,29 +162,29 @@ git -C "$REPO_ROOT" worktree add -b "$BRANCH" "$WT_DIR" origin/main
 )
 
 # 2. Orient the orchestrator (you).
-ORCH_SURF="$CMUX_SURFACE_ID"
-WS="$CMUX_WORKSPACE_ID"
-c11 set-agent       --surface "$ORCH_SURF" --type claude-code --model claude-opus-4-7
-c11 rename-tab      --surface "$ORCH_SURF" "$TICKET Orchestrator"
-c11 set-metadata    --surface "$ORCH_SURF" --key role   --value "orchestrator"
-c11 set-metadata    --surface "$ORCH_SURF" --key task   --value "$TICKET"
-c11 set-metadata    --surface "$ORCH_SURF" --key status --value "delegating"
-c11 set-description --surface "$ORCH_SURF" "$(printf '%s\nOrchestrator: handing off to delegator in sibling pane.' "$PURPOSE")"
+ORCH_TAB="$C11_TAB_ID"
+WS="$C11_WORKSPACE_ID"
+c11 set-agent       --tab "$ORCH_TAB" --type claude-code --model claude-opus-4-7
+c11 rename-tab      --tab "$ORCH_TAB" "$TICKET Orchestrator"
+c11 set-metadata    --tab "$ORCH_TAB" --key role   --value "orchestrator"
+c11 set-metadata    --tab "$ORCH_TAB" --key task   --value "$TICKET"
+c11 set-metadata    --tab "$ORCH_TAB" --key status --value "delegating"
+c11 set-description --tab "$ORCH_TAB" "$(printf '%s\nOrchestrator: handing off to delegator in sibling area.' "$PURPOSE")"
 
-# 3. Split a new pane directly below and discover its refs.
+# 3. Split a new area directly below and discover its refs.
 c11 new-split down
-#    → "OK surface:<N> workspace:<M>" (new-split does NOT return the pane ref)
+#    → "OK tab:<N> workspace:<M>" (new-split does NOT return the area ref)
 c11 tree --no-layout
-#    Read the new pane from the tree output. Capture DELEG_PANE and DELEG_SURF.
+#    Read the new area from the tree output. Capture DELEG_AREA and DELEG_TAB.
 
-# 4. Seed the delegator pane's metadata — SAME purpose string so the
+# 4. Seed the delegator area's metadata — SAME purpose string so the
 #    sidebar reads consistently across the delegation.
-c11 set-agent       --surface "$DELEG_SURF" --type claude-code --model claude-opus-4-7
-c11 rename-tab      --surface "$DELEG_SURF" "$TICKET Delegator"
-c11 set-metadata    --surface "$DELEG_SURF" --key role   --value "delegator"
-c11 set-metadata    --surface "$DELEG_SURF" --key task   --value "$TICKET"
-c11 set-metadata    --surface "$DELEG_SURF" --key status --value "starting"
-c11 set-description --surface "$DELEG_SURF" "$(printf '%s\nDelegator: orchestrating Plan → Impl → Review → PR.' "$PURPOSE")"
+c11 set-agent       --tab "$DELEG_TAB" --type claude-code --model claude-opus-4-7
+c11 rename-tab      --tab "$DELEG_TAB" "$TICKET Delegator"
+c11 set-metadata    --tab "$DELEG_TAB" --key role   --value "delegator"
+c11 set-metadata    --tab "$DELEG_TAB" --key task   --value "$TICKET"
+c11 set-metadata    --tab "$DELEG_TAB" --key status --value "starting"
+c11 set-description --tab "$DELEG_TAB" "$(printf '%s\nDelegator: orchestrating Plan → Impl → Review → PR.' "$PURPOSE")"
 
 # 5. Write the delegator prompt to the working root's .lattice/prompts/
 #    directory. Co-locating prompts with the rest of the ticket's state keeps
@@ -193,7 +193,7 @@ c11 set-description --surface "$DELEG_SURF" "$(printf '%s\nDelegator: orchestrat
 #    skill); the same relative `.lattice/prompts/<ticket>-<phase>.md` path
 #    resolves cleanly when running without a worktree because it's relative to
 #    whatever the launching shell `cd`s into. Parameterize the template
-#    with $TICKET, the ULID, $DELEG_PANE, $DELEG_SURF, $WT_DIR, $BRANCH, etc.
+#    with $TICKET, the ULID, $DELEG_AREA, $DELEG_TAB, $WT_DIR, $BRANCH, etc.
 #
 #    Filenames are **ticket-prefixed** (`<ticket-lower>-delegator.md`,
 #    `<ticket-lower>-plan.md`, etc.) — never bare `delegator.md` / `plan.md`.
@@ -215,25 +215,25 @@ EOF
 #    If the operator's shell auto-starts a TUI on terminal init (e.g. `cc` for
 #    Claude Code), the launch text would land inside the running TUI rather
 #    than the shell. Read first; send the right shape:
-SCREEN="$(c11 read-screen --workspace "$WS" --surface "$DELEG_SURF" --lines 5 2>&1)"
+SCREEN="$(c11 read-screen --workspace "$WS" --tab "$DELEG_TAB" --lines 5 2>&1)"
 if echo "$SCREEN" | grep -qE 'Claude Code v|^❯ '; then
   # TUI already running — send only the prompt content as a user message.
   # Use the ABSOLUTE path so the agent doesn't have to guess at cwd
   # (the TUI's cwd may not be $WT_DIR).
-  c11 send --workspace "$WS" --surface "$DELEG_SURF" \
+  c11 send --workspace "$WS" --tab "$DELEG_TAB" \
     "Read $WT_DIR/.lattice/prompts/${TICKET_LOWER}-delegator.md and follow the instructions."
 else
   # Clean shell — one-shot launch.
-  c11 send --workspace "$WS" --surface "$DELEG_SURF" \
+  c11 send --workspace "$WS" --tab "$DELEG_TAB" \
     "cd $WT_DIR && claude --dangerously-skip-permissions --model opus \"Read .lattice/prompts/${TICKET_LOWER}-delegator.md and follow the instructions.\""
 fi
-c11 send-key --workspace "$WS" --surface "$DELEG_SURF" enter
+c11 send-key --workspace "$WS" --tab "$DELEG_TAB" enter
 
 # 7. Record the setup on the ticket so the trail is complete from first event.
 #    All lattice writes target $REPO_ROOT — the worktree's .lattice/ is for
 #    sub-agent reads only.
 ( cd "$REPO_ROOT" && lattice comment "$TICKET" \
-    "Orchestration started. Orchestrator: surface:$ORCH_SURF. Delegator: pane:$DELEG_PANE / surface:$DELEG_SURF. Worktree: $WT_DIR (branch $BRANCH). Parent repo (canonical Lattice store): $REPO_ROOT. Prompt at $WT_DIR/.lattice/prompts/${TICKET_LOWER}-delegator.md. Phase sub-agents will be sibling surfaces inside the delegator's pane." \
+    "Orchestration started. Orchestrator: tab:$ORCH_TAB. Delegator: area:$DELEG_AREA / tab:$DELEG_TAB. Worktree: $WT_DIR (branch $BRANCH). Parent repo (canonical Lattice store): $REPO_ROOT. Prompt at $WT_DIR/.lattice/prompts/${TICKET_LOWER}-delegator.md. Phase sub-agents will be sibling tabs inside the delegator's area." \
     --actor human:<operator> )
 
 # 8. Seed the orchestrator's watch state file (used by the active polling loop)
@@ -241,7 +241,7 @@ c11 send-key --workspace "$WS" --surface "$DELEG_SURF" enter
 #    what to do on each wake. The state file lives in /tmp keyed by ticket so
 #    parallel delegations don't collide. Polling reads from $REPO_ROOT.
 cat > /tmp/${TICKET_LOWER}-orch-state.json <<EOF
-{"ticket":"$TICKET","wt_dir":"$WT_DIR","repo_root":"$REPO_ROOT","ws":"$WS","deleg_surf":"$DELEG_SURF","last_status":"$(cd $REPO_ROOT && lattice show $TICKET --json | jq -r '.data.status')","last_comment_count":$(cd $REPO_ROOT && lattice show $TICKET --json | jq '.data.comment_count // 0'),"started_at":"$(date -u +%FT%TZ)"}
+{"ticket":"$TICKET","wt_dir":"$WT_DIR","repo_root":"$REPO_ROOT","ws":"$WS","deleg_surf":"$DELEG_TAB","last_status":"$(cd $REPO_ROOT && lattice show $TICKET --json | jq -r '.data.status')","last_comment_count":$(cd $REPO_ROOT && lattice show $TICKET --json | jq '.data.comment_count // 0'),"started_at":"$(date -u +%FT%TZ)"}
 EOF
 # Then call ScheduleWakeup with delaySeconds=1500 (default) and a prompt that
 # re-enters this skill's polling routine. ScheduleWakeup is a Claude Code tool
@@ -252,19 +252,19 @@ After step 8 the setup is complete. The orchestrator must keep itself alive via 
 
 ## Delegator prompt template
 
-The delegator is a full Claude Code session launched with one prompt. Give it everything it needs to run autonomously; the orchestrator only reads ticket state and surface metadata afterward (it is not a participant in the work itself). Template below — substitute the `{{var}}` placeholders before writing. Standard placeholders: `{{TICKET}}`, `{{TASK_ULID}}`, `{{TASK_TITLE}}`, `{{PURPOSE}}` (the multi-line parent + ticket string built in the setup playbook), `{{DELEG_PANE}}`, `{{DELEG_SURF}}`, `{{ORCH_SURF}}`, `{{WS}}`, `{{WT_DIR}}`, `{{REPO_ROOT}}` (parent repo — the canonical Lattice store), `{{BRANCH}}`, `{{ACTOR}}`.
+The delegator is a full Claude Code session launched with one prompt. Give it everything it needs to run autonomously; the orchestrator only reads ticket state and tab metadata afterward (it is not a participant in the work itself). Template below — substitute the `{{var}}` placeholders before writing. Standard placeholders: `{{TICKET}}`, `{{TASK_ULID}}`, `{{TASK_TITLE}}`, `{{PURPOSE}}` (the multi-line parent + ticket string built in the setup playbook), `{{DELEG_AREA}}`, `{{DELEG_TAB}}`, `{{ORCH_TAB}}`, `{{WS}}`, `{{WT_DIR}}`, `{{REPO_ROOT}}` (parent repo — the canonical Lattice store), `{{BRANCH}}`, `{{ACTOR}}`.
 
 ```markdown
 # {{TICKET}} Delegator
 
-You are the **delegator** for Lattice ticket **{{TICKET}}** (`{{TASK_ULID}}`): *"{{TASK_TITLE}}"*. Drive this ticket end-to-end through the full Lattice lifecycle, spawning sub-agents in sibling surfaces (tabs in your own pane) for each phase.
+You are the **delegator** for Lattice ticket **{{TICKET}}** (`{{TASK_ULID}}`): *"{{TASK_TITLE}}"*. Drive this ticket end-to-end through the full Lattice lifecycle, spawning sub-agents in sibling tabs in your own area for each phase.
 
-You are the **primary human interface for this ticket**. The operator scrubs your pane, not your sub-agents'. All escalations, decisions, and status-to-human communication flow through you. Your sub-agents post to Lattice and stop; they do not address the human.
+You are the **primary human interface for this ticket**. The operator scrubs your area, not your sub-agents'. All escalations, decisions, and status-to-human communication flow through you. Your sub-agents post to Lattice and stop; they do not address the human.
 
 ## Context
 
-- You live in pane **{{DELEG_PANE}}**, surface **{{DELEG_SURF}}**, workspace **{{WS}}**.
-- Orchestrator: surface **{{ORCH_SURF}}** (tab "{{TICKET}} Orchestrator"). Do not message the orchestrator directly; report via Lattice comments on {{TICKET}}.
+- You live in area **{{DELEG_AREA}}**, tab **{{DELEG_TAB}}**, workspace **{{WS}}**.
+- Orchestrator: tab **{{ORCH_TAB}}** (titled "{{TICKET}} Orchestrator"). Do not message the orchestrator directly; report via Lattice comments on {{TICKET}}.
 - Worktree: **{{WT_DIR}}** on branch **{{BRANCH}}**. **All code work stays inside this worktree.** The main repo's working tree is off-limits for code edits, builds, and commits.
 - Parent repo: **{{REPO_ROOT}}**. **All `lattice` writes target this repo, not the worktree** — see the *Lattice writes* discipline below. Use `(cd {{REPO_ROOT}} && lattice ...)`.
 - Actor: `{{ACTOR}}` for your own writes. Sub-agents you spawn should tag themselves with a phase-specific actor (e.g., `{{ACTOR}}-plan`, `{{ACTOR}}-impl`, `{{ACTOR}}-review`, `{{ACTOR}}-translator`).
@@ -293,7 +293,7 @@ Reads can come from either side; the worktree's `.lattice/` is a snapshot for re
 
 ## Load these skills first
 
-1. **c11** — pane splits, surface creation, metadata, send/send-key, launching sub-agents.
+1. **c11** — area splits, tab creation, metadata, send/send-key, launching sub-agents.
 2. **lattice** — Advance loop, statuses, `complete` ceremony, plan file at `.lattice/notes/<ulid>.md`.
 3. **lattice-delegate** (this skill) — the pattern you're implementing.
 4. Any review/PR/release skill the project ships with (e.g., `trident-code-review`, `compushar`, `release-local`, etc.).
@@ -305,27 +305,27 @@ Reads can come from either side; the worktree's `.lattice/` is a snapshot for re
 cd {{WT_DIR}}                                       # code work happens here
 export REPO_ROOT={{REPO_ROOT}}                      # Lattice writes go here
 c11 identify
-c11 set-agent       --surface "$CMUX_SURFACE_ID" --type claude-code --model claude-opus-4-7
-c11 set-metadata    --surface "$CMUX_SURFACE_ID" --key status --value "orienting"
-# Description = three lines, per the c11 skill's "Multi-line descriptions for
-# ticket-flow surfaces" section: parent context, this ticket, this phase. Keeps
-# the sidebar groundable for the operator scanning a dozen surfaces.
-c11 set-description --surface "$CMUX_SURFACE_ID" "$(printf '%s\nDelegator: orchestrating Plan → Impl → Review → PR.' "{{PURPOSE}}")"
+c11 set-agent       --tab "$C11_TAB_ID" --type claude-code --model claude-opus-4-7
+c11 set-metadata    --tab "$C11_TAB_ID" --key status --value "orienting"
+# Description = three lines, per the c11 skill's title and description
+# conventions: parent context, this ticket, this phase. Keeps
+# the sidebar groundable for the operator scanning a dozen tabs.
+c11 set-description --tab "$C11_TAB_ID" "$(printf '%s\nDelegator: orchestrating Plan → Impl → Review → PR.' "{{PURPOSE}}")"
 (cd $REPO_ROOT && lattice show {{TICKET}})
 cat $REPO_ROOT/.lattice/notes/{{TASK_ULID}}.md 2>/dev/null || echo "(no plan yet)"
 ```
 
-## Phase model — one sibling surface per phase
+## Phase model — one sibling tab per phase
 
-Each phase = a new tab in **pane {{DELEG_PANE}}** so the operator can scrub all of them from one vertical slice. Every phase sibling inherits the same two-line sidebar convention — title carries role+phase, description carries the multi-line purpose plus the phase role.
+Each phase = a new tab in **area {{DELEG_AREA}}** so the operator can scrub all of them from one vertical slice. Every phase sibling inherits the same two-line sidebar convention — title carries role+phase, description carries the multi-line purpose plus the phase role.
 
 ```bash
-c11 new-surface --pane {{DELEG_PANE}}
-# → captures new surface ref; use `::` lineage in its tab name:
+c11 new-tab --area {{DELEG_AREA}}
+# → captures new tab ref; use `::` lineage in its tab name:
 #   "{{TICKET}} Delegator :: Plan"    …:: Impl    …:: Translator    …:: Review    …:: Validate    …:: Fix
 
 # Each phase sibling sets its description to {{PURPOSE}} + the phase-specific role line:
-c11 set-description --surface "<phase-surface-ref>" "$(printf '%s\nPlan phase: drafting commit grouping and parallelization.' "{{PURPOSE}}")"
+c11 set-description --tab "<phase-tab-ref>" "$(printf '%s\nPlan phase: drafting commit grouping and parallelization.' "{{PURPOSE}}")"
 ```
 
 Launch each sub-agent with the c11 one-shot pattern: write the phase prompt to `$WT_DIR/.lattice/prompts/${TICKET_LOWER}-<phase>.md`, then `cd $WT_DIR && claude --dangerously-skip-permissions --model opus "Read .lattice/prompts/${TICKET_LOWER}-<phase>.md and follow the instructions."`. No ready-state polling. The relative path resolves against the launching `cd` — `$WT_DIR` is the worktree when you're using one, or the repo root if you're not.
@@ -344,7 +344,7 @@ $WT_DIR/.lattice/prompts/
 └── c11-6-fix.md         # only if a Fix phase is needed
 ```
 
-Apply the same auto-launch-detection pattern from setup playbook step 6 to each phase sub-agent launch (read the target surface for an existing TUI prompt before sending the launch line).
+Apply the same auto-launch-detection pattern from setup playbook step 6 to each phase sub-agent launch (read the target tab for an existing TUI prompt before sending the launch line).
 
 **Every sub-agent prompt must end with an explicit stop instruction:**
 > "After you post your completion comment, stop. Do not address the human directly — the delegator is the human's interface for this ticket. Another agent will evaluate your work and continue the process."
@@ -404,7 +404,7 @@ Every phase below begins with a **status bump** as its first action. This is non
 - Push the branch, open a PR via `gh pr create`, attach the PR URL: `(cd {{REPO_ROOT}} && lattice attach {{TICKET}} <pr-url> --type reference --title "PR" --actor {{ACTOR}})`.
 - `(cd {{REPO_ROOT}} && lattice complete {{TICKET}} --review "..." --actor {{ACTOR}})` — the review text is the audit entry for every future reader, write it like you mean it. **Unless the project convention is to leave merge to the operator**, in which case stay at `review` and let the operator call `complete` after PR merge.
 - Final `(cd {{REPO_ROOT}} && lattice comment ...)` summarizing what shipped + pointing to the validation artifact.
-- The delegator's last message in its pane should be a human-readable summary of where the ticket landed, because that's what the operator will read when they come back.
+- The delegator's last message in its area should be a human-readable summary of where the ticket landed, because that's what the operator will read when they come back.
 
 ## Handling follow-up work
 
@@ -417,12 +417,12 @@ Err on the side of cohesion. Spree tickets age badly.
 
 ## Visible status
 
-Keep your own surface honest throughout:
+Keep your own tab honest throughout:
 
 ```bash
-c11 set-metadata --surface "$CMUX_SURFACE_ID" --key status --value "planning"    # then implementing / reviewing / validating / handing-off
+c11 set-metadata --tab "$C11_TAB_ID" --key status --value "planning"    # then implementing / reviewing / validating / handing-off
 c11 set-progress 0.25                                                              # use set-progress, not set-metadata --key progress
-c11 log --source "{{TICKET}} Delegator" "Plan sub-agent launched in surface:<N>"
+c11 log --source "{{TICKET}} Delegator" "Plan sub-agent launched in tab:<N>"
 ```
 
 Use `c11 set-progress <float>` — not `c11 set-metadata --key progress --value <n> --type number`. The dedicated command handles the type contract; the metadata form fails with `reserved_key_invalid_type`.
@@ -444,16 +444,16 @@ Post a one-line Lattice comment at every phase transition so the orchestrator ca
 
 ## Watching sub-agents (delegator)
 
-The delegator owns the responsiveness of the whole delegation. A sub-agent that crashed, hung on a permission prompt, or wandered off-script can sit dead for many minutes if the delegator only polls every few minutes. The operator scrubs *your* pane; if you don't notice the stall, they will, and the trust budget for the pattern erodes.
+The delegator owns the responsiveness of the whole delegation. A sub-agent that crashed, hung on a permission prompt, or wandered off-script can sit dead for many minutes if the delegator only polls every few minutes. The operator scrubs *your* area; if you don't notice the stall, they will, and the trust budget for the pattern erodes.
 
 **Cadence: poll every 30–60 seconds while a sub-agent is the current working item.** Not 90s, not 5min, not "every once in a while." Tight polling is a feature: it bounds the worst-case "how long can this be broken before someone notices" to under a minute. The token cost is real but small relative to the cost of an unnoticed stall in a multi-hour delegation.
 
 **Poll on more than commits.** A `count >= N` predicate misses every failure mode that doesn't manifest as commits — and the sub-agent failure modes that hurt most (silent crash, stuck on input, wandered off-script) all look like "no new commits" to a commit-counter. Each polling cycle should check several signals:
 
 - **Commits on remote** for the expected branch (`git rev-list --count`) — the throughput metric.
-- **Sub-agent surface liveness** via `c11 read-screen --workspace $WS --surface $SUB --lines 30 | tail -10` — is there an active prompt waiting? An error trace? A "what should I do?" question to the human that violates the stop contract?
-- **Lattice activity on the ticket** — new comments, status changes, status pill on the sub-agent surface (`c11 get-metadata --workspace $WS --surface $SUB --key status`). A sub-agent that posted a meaningful comment 3 minutes ago and went silent is different from one that has produced nothing since launch.
-- **Time since last observable progress.** If you've seen no commit, no comment, no status change, and no surface activity for ~5 minutes, treat it as a probable stall and read the surface in full. Don't wait another 20 minutes hoping it recovers.
+- **Sub-agent tab liveness** via `c11 read-screen --workspace $WS --tab $SUB --lines 30 | tail -10` — is there an active prompt waiting? An error trace? A "what should I do?" question to the human that violates the stop contract?
+- **Lattice activity on the ticket** — new comments, status changes, status pill on the sub-agent tab (`c11 get-metadata --workspace $WS --tab $SUB --key status`). A sub-agent that posted a meaningful comment 3 minutes ago and went silent is different from one that has produced nothing since launch.
+- **Time since last observable progress.** If you've seen no commit, no comment, no status change, and no tab activity for ~5 minutes, treat it as a probable stall and read the tab in full. Don't wait another 20 minutes hoping it recovers.
 
 ```bash
 # Background poller — 45s cadence, checks throughput AND liveness.
@@ -465,8 +465,8 @@ cat <<'BASH' > /tmp/${TICKET_LOWER}-watch-impl.sh
 EXPECTED_COMMITS=9
 BRANCH=cmux-37/final-push
 WS=workspace:3
-SUB_A=surface:14
-SUB_B=surface:15
+SUB_A=tab:14
+SUB_B=tab:15
 REPO_ROOT=/path/to/parent/repo
 LAST_PROGRESS_AT=$(date +%s)
 TIMEOUT_AT=$(( $(date +%s) + 10800 ))
@@ -475,8 +475,8 @@ while :; do
   git -C "$REPO_ROOT" fetch origin "$BRANCH" --quiet 2>/dev/null
   COUNT=$(git -C "$REPO_ROOT" rev-list --count "origin/main..origin/$BRANCH" 2>/dev/null || echo 0)
   COMMENTS=$(cd "$REPO_ROOT" && lattice show "$TICKET" --json 2>/dev/null | jq '.data.comment_count // 0')
-  STATUS_A=$(c11 get-metadata --workspace "$WS" --surface "$SUB_A" --key status 2>/dev/null)
-  STATUS_B=$(c11 get-metadata --workspace "$WS" --surface "$SUB_B" --key status 2>/dev/null)
+  STATUS_A=$(c11 get-metadata --workspace "$WS" --tab "$SUB_A" --key status 2>/dev/null)
+  STATUS_B=$(c11 get-metadata --workspace "$WS" --tab "$SUB_B" --key status 2>/dev/null)
   NOW=$(date +%s)
 
   echo "[$(date -u +%FT%TZ)] commits=$COUNT/$EXPECTED_COMMITS comments=$COMMENTS A=$STATUS_A B=$STATUS_B"
@@ -493,8 +493,8 @@ while :; do
   # Stall heuristic: 5 min since last commit/comment/status change → read screens
   if [ $((NOW - LAST_PROGRESS_AT)) -gt 300 ]; then
     echo "STALL: reading sub-agent screens"
-    c11 read-screen --workspace "$WS" --surface "$SUB_A" --lines 50 | tail -30
-    c11 read-screen --workspace "$WS" --surface "$SUB_B" --lines 50 | tail -30
+    c11 read-screen --workspace "$WS" --tab "$SUB_A" --lines 50 | tail -30
+    c11 read-screen --workspace "$WS" --tab "$SUB_B" --lines 50 | tail -30
     LAST_PROGRESS_AT=$NOW   # reset so we don't re-print every 45s
   fi
 
@@ -555,9 +555,9 @@ Default to **1500s (25 min)** when in doubt. That's a sensible balance for phase
    lattice show $TICKET --json | jq -r '.data.status, .data.comment_count'
    lattice show $TICKET --full | tail -60   # full event/comment trail
    ```
-2. **Poll the delegator's surface status** (this is c11-daemon-backed, not file-based, so it's process-independent):
+2. **Poll the delegator's tab status** (this is c11-daemon-backed, not file-based, so it's process-independent):
    ```bash
-   c11 get-metadata --workspace $WS --surface $DELEG_SURF --key status
+   c11 get-metadata --workspace $WS --tab $DELEG_TAB --key status
    ```
 3. **Compare against last-known state** stored at `/tmp/${TICKET_LOWER}-orch-state.json` (seeded in step 8 of setup). Diff against `last_status`, `last_comment_count`, and any new comments since `last_check_at`.
 4. **Decide: surface, or re-schedule silently.**
@@ -566,7 +566,7 @@ Default to **1500s (25 min)** when in doubt. That's a sensible balance for phase
 
 ### Surface format
 
-When you do surface, lead with an unmistakable status header (the operator may be scanning many panes — make it obvious at a glance), then answer three questions, terse:
+When you do surface, lead with an unmistakable status header (the operator may be scanning many areas — make it obvious at a glance), then answer three questions, terse:
 
 1. **What changed?** (Status transition, new comment summary.)
 2. **What does it mean?** (Done / blocked / decision needed / progress checkpoint.)
@@ -614,7 +614,7 @@ grep -q "## Implementation Plan" $WT_DIR/.lattice/plans/$ULID.md 2>/dev/null && 
 
 Counters tick on every breadcrumb, so prefer downstream-artifact predicates over comment counts.
 
-If the delegator's surface closes (e.g. the operator closes the pane), the PTY scrollback is unrecoverable — `c11 read-screen` returns `Surface is not a terminal`. That's fine: every meaningful event is already on the ticket. Treat the Lattice audit trail as the durable record and the live panes as transient.
+If the delegator's tab closes (e.g. the operator closes the tab), the PTY scrollback is unrecoverable — `c11 read-screen` returns `Tab is not a terminal`. That's fine: every meaningful event is already on the ticket. Treat the Lattice audit trail as the durable record and the live tabs as transient.
 
 ### Anti-patterns
 
@@ -627,8 +627,8 @@ If the delegator's surface closes (e.g. the operator closes the pane), the PTY s
 
 ## Teardown
 
-- **On `done` — default is leave-open for after-action review.** The delegator and its sibling surfaces stay live so the operator can scrub plan/impl/review transcripts for retrospectives, pattern extraction, or just satisfaction. The delegator may tear them down if explicitly instructed; otherwise leave them.
-- **Worktree cleanup is separate** from surface cleanup. Once the PR merges and the branch is deleted, `git worktree remove <dir>` is safe to run. The delegator should leave the worktree alive until the human confirms merge.
+- **On `done` — default is leave-open for after-action review.** The delegator and its sibling tabs stay live so the operator can scrub plan/impl/review transcripts for retrospectives, pattern extraction, or just satisfaction. The delegator may tear them down if explicitly instructed; otherwise leave them.
+- **Worktree cleanup is separate** from tab cleanup. Once the PR merges and the branch is deleted, `git worktree remove <dir>` is safe to run. The delegator should leave the worktree alive until the human confirms merge.
 - **On `needs_human`:** leave everything open so the operator can read it directly. Hand control back by posting a clear Lattice comment summarizing what decision is needed.
 - **On `blocked`:** same as `needs_human` but for external dependencies (CI, env, another ticket).
 
@@ -637,10 +637,10 @@ If the delegator's surface closes (e.g. the operator closes the pane), the PTY s
 1. Orient.
 2. Read ticket + any existing plan + project CLAUDE.md.
 3. Move to `in_planning`, spawn Plan sibling.
-4. Comment on the ticket: "Delegator online. Plan phase starting in sibling surface <ref>."
+4. Comment on the ticket: "Delegator online. Plan phase starting in sibling tab <ref>."
 
 ## Known gaps
 
-- **Pane ref discovery after `new-split`.** `new-split` returns only the new surface ref, not the pane ref; the skill currently works around this by calling `c11 tree --no-layout` and inferring. An upstream change to c11 to emit `OK pane:<P> surface:<N> workspace:<M>` would drop the workaround — file a ticket against c11 when convenient.
-- **`new-surface --pane <pane>` needs the pane ref.** If the delegator loses track of its own pane ref, `c11 identify` returns it as `caller.pane_ref`. Keep it in an env var.
-- **`c11 new-pane` lacks a `--command` flag.** `c11 new-workspace --command <text>` exists; `c11 new-pane` doesn't. If it did, the auto-launch detection in step 6 would be unnecessary — the orchestrator could create the pane with the launch line as its initial process, bypassing any operator rc-file. File a ticket against c11 when convenient.
+- **Area ref discovery after `new-split`.** `new-split` returns only the new tab ref, not the area ref; the skill currently works around this by calling `c11 tree --no-layout` and inferring. An upstream change to c11 to emit `OK area:<P> tab:<N> workspace:<M>` would drop the workaround — file a ticket against c11 when convenient.
+- **`new-tab --area <area>` needs the area ref.** If the delegator loses track of its own area ref, `c11 identify` returns it as `caller.area_ref`. Keep it in an env var.
+- **`c11 new-area` lacks a `--command` flag.** `c11 new-workspace --command <text>` exists; `c11 new-area` doesn't. If it did, the auto-launch detection in step 6 would be unnecessary — the orchestrator could create the area with the launch line as its initial process, bypassing any operator rc-file. File a ticket against c11 when convenient.
