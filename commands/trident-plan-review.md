@@ -7,7 +7,7 @@ Run parallel plan reviews using Claude, Codex, and Gemini — each provider runs
 - `/user:trident-plan-review <file> <additional notes>` — Review with additional context
 - `$ARGUMENTS` contains the file path and optional additional notes
 
-**How to invoke:** a single agent runs this command. The nine reviewers and four synthesizers are that agent's sub-agents and headless bash sessions. They do NOT need their own panes or surfaces. If you're a Plan-review sibling inside a delegator pattern, you invoke `/trident-plan-review` from your one surface and the 9+4 run under you.
+**How to invoke:** a single agent runs this command. The nine reviewers and four synthesizers are that agent's sub-agents and headless bash sessions. They do NOT need their own areas or tabs. If you're a Plan-review sibling inside a delegator pattern, you invoke `/trident-plan-review` from your one tab and the 9+4 run under you.
 
 ---
 

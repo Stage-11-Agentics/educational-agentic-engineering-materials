@@ -15,7 +15,7 @@ These terms have overloaded meanings. When you see them, they trigger specific b
 | Term | Meaning |
 |------|---------|
 | **clear** | Spawn a fresh, headless agent with isolated context |
-| **new instance** / **cmux instance** | Launch a Claude Code session in a new c11 pane |
+| **new instance** / **cmux instance** | Launch a Claude Code session in a new c11 area |
 | **loopy** | Attempt the full loop: implement, validate, iterate, report |
 | **dialogue** | Enter dialogue-driven development mode: ask every question needed before building |
 
@@ -93,13 +93,13 @@ You can spawn up to 10 agents simultaneously. When a task is parallelizable, div
 [c11](https://github.com/Stage-11-Agentics/c11) is a native macOS terminal multiplexer built on Ghostty's renderer. Primary workspace environment. **Assume you are running inside c11 unless detection says otherwise.**
 
 **Load the `c11` skill whenever ANY of these is true:**
-- `CMUX_SHELL_INTEGRATION=1` or any `CMUX_*` env var is set (you're running inside c11)
-- The operator says "c11" or "cmux", or asks about panes, splits, workspaces, surfaces, tabs, or the embedded browser
-- The task touches terminal multiplexing, sub-agent orchestration in sibling panes, or multi-pane layout
+- `C11_SHELL_INTEGRATION=1` or any `C11_*` env var is set (you're running inside c11)
+- The operator says "c11" or "cmux", or asks about workspaces, areas, tabs, splits, or the embedded browser
+- The task touches terminal multiplexing, sub-agent orchestration in sibling areas, or multi-area layout
 
-The skill owns splits, sends, sub-agent orchestration, the embedded browser, targeting rules, tab naming, pane resize, and sidebar reporting. **Do not improvise `c11` commands from memory.** The skill is kept current with binary quirks the help output doesn't surface. Do not reach for Chrome MCP when you're in c11.
+The skill owns splits, sends, sub-agent orchestration, the embedded browser, targeting rules, tab naming, area resize, and sidebar reporting. **Do not improvise `c11` commands from memory.** The skill is kept current with binary quirks the help output doesn't surface. Do not reach for Chrome MCP when you're in c11.
 
-**Tab naming is mandatory and must happen first.** When running inside c11 (`CMUX_SHELL_INTEGRATION=1`), your very first batch of tool calls must include: `c11 rename-tab --surface "$CMUX_SURFACE_ID" "<role>"`. An unnamed tab gets Claude Code's auto-title from the first user message, which produces names like "✳ Read and follow implementation prompt instructions". Useless for navigation. Key first, 2-4 words, under 25 chars.
+**Tab naming is mandatory and must happen first.** When running inside c11 (`C11_SHELL_INTEGRATION=1`), your very first batch of tool calls must include: `c11 rename-tab --tab "$C11_TAB_ID" "<role>"`. An unnamed tab gets Claude Code's auto-title from the first user message, which produces names like "✳ Read and follow implementation prompt instructions". Useless for navigation. Key first, 2-4 words, under 25 chars.
 
 ## Git: Auto-Commit and Push Policy
 

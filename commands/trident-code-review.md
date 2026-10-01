@@ -6,7 +6,7 @@ Run parallel code reviews using Claude, Codex, and Gemini — each provider runs
 - `/user:trident-code-review` — Review current branch with all nine agents
 - `/user:trident-code-review [context]` — Review with additional context: `$ARGUMENTS`
 
-**How to invoke:** a single agent runs this command. The nine reviewers and three synthesizers are that agent's sub-agents and headless bash sessions — they do NOT need their own panes or surfaces. If you're a Review sibling inside a delegator pattern, you invoke `/trident-code-review` from your one surface and the 9+3 run under you.
+**How to invoke:** a single agent runs this command. The nine reviewers and three synthesizers are that agent's sub-agents and headless bash sessions — they do NOT need their own areas or tabs. If you're a Review sibling inside a delegator pattern, you invoke `/trident-code-review` from your one tab and the 9+3 run under you.
 
 ---
 

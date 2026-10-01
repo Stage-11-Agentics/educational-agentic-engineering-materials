@@ -14,7 +14,7 @@ This is what we actually run, every day. Not a sanitized demo. The files in this
 | [`commands/trident-plan-review.md`](commands/trident-plan-review.md) | Same shape as trident code review, pointed at a plan or design document instead of a diff. |
 | [`agents/`](agents/) | The lens prompt files the trident commands compose — `CodeReview-{Standard,Critical,Evolutionary}.md` and `PlanReview-{Standard,Adversarial,Evolutionary}.md`. Plain markdown, not slash commands; trident reads them from `~/.claude/agents/` by path. (For a single day-to-day review, use Claude Code's built-in `/code-review`.) |
 | [`skills/lattice-orchestrator/`](skills/lattice-orchestrator/) | The build engine. Turns a finished spec + build plan into tickets, dispatches a fleet of delegator agents that produce one PR per ticket, and closes with a terminal audit run by an agent that read the spec cold. Overnight-capable. |
-| [`skills/lattice-delegate/`](skills/lattice-delegate/) | The single-ticket sibling. One ticket, one dedicated pane, one isolated worktree, plan → implement → review → validate → PR. What the orchestrator dispatches N of; useful on its own when you have one ticket, not a run. |
+| [`skills/lattice-delegate/`](skills/lattice-delegate/) | The single-ticket sibling. One ticket, one dedicated area, one isolated worktree, plan → implement → review → validate → PR. What the orchestrator dispatches N of; useful on its own when you have one ticket, not a run. |
 | [`atins-global-claude-md-example.md`](atins-global-claude-md-example.md) | One operator's global `~/.claude/CLAUDE.md`. Loads into every Claude Code session on the machine. The headline pattern: language overloading. |
 | [`commands/capture-skill.md`](commands/capture-skill.md) | Extract reusable knowledge from a conversation into a `CLAUDE.md` file or a new slash command. The flywheel for a self-improving codebase. |
 | [`atins-statusline-example.sh`](atins-statusline-example.sh) | One operator's single adaptive Claude Code status line. Priority-ordered, collapses right-to-left as the pane narrows. Git worktree-aware, model colored by family, context + rate-limit gradients with a usage glide slope. |
@@ -137,7 +137,7 @@ lattice-orchestrator
 │     └── Write the validation plan — every criterion, one row, tagged
 │           pre-merge-static (an agent can audit it) or post-merge-smoke (a human must)
 ├── Phase 1: Dispatch                        [Orchestrator → N delegators]
-│     ├── One delegator per ticket, own pane, own git worktree
+│     ├── One delegator per ticket, own area, own git worktree
 │     ├── Each walks plan → implement → review → validate → PR
 │     ├── Press-ahead: spawn dependents at review, not at merge
 │     └── Escalations re-surfaced every tick while they stand
@@ -160,7 +160,7 @@ The skill is four files: [`SKILL.md`](skills/lattice-orchestrator/SKILL.md) is t
 
 ### Requirements, and what degrades
 
-Two Stage 11 tools, both open source: [**Lattice**](https://github.com/Stage-11-Agentics/lattice) (the ticket board and the review/validation CLI — this skill is named for its substrate, and a different substrate would be a different skill) and [**c11**](https://github.com/Stage-11-Agentics/c11) (the terminal multiplexer that gives every delegator a visible pane you can scrub). Outside c11 the run still works — the delegators need any harness that can spawn parallel sub-sessions — but the workspace geometry, the live board surface, and the pane-scrubbing all degrade to whatever your harness offers.
+Two Stage 11 tools, both open source: [**Lattice**](https://github.com/Stage-11-Agentics/lattice) (the ticket board and the review/validation CLI — this skill is named for its substrate, and a different substrate would be a different skill) and [**c11**](https://github.com/Stage-11-Agentics/c11) (the terminal multiplexer that gives every delegator a visible area you can scrub). Outside c11 the run still works — the delegators need any harness that can spawn parallel sub-sessions — but the workspace geometry, the live board tab, and the area-scrubbing all degrade to whatever your harness offers.
 
 The upstream stages that *author* the contract (Stage 11's Tone workflow — initiation, prototype, architecture) are not published here; `SKILL.md` references them because that is how it actually runs. Nothing stops you: hand it a `SPEC.md`, an `EVALUATION.md`, and a `BUILDPLAN.md` from any source, including your own hand, and it runs standalone. If those artifacts don't exist yet, the skill's correct behavior is to refuse and say so.
 
@@ -179,7 +179,7 @@ From a repo with a build contract in it:
 orchestrate this
 ```
 
-Phase 0 is a short config dialogue — autonomy level, how many delegators run concurrently, whether PRs auto-merge or stop at review — with defaults auto-suggested from the size of the plan. Then it tells you exactly what Phase 1 will look like (how many panes appear, how escalations reach you, what "done" means) before it spawns anything. Set autonomy to Fully Autonomous and it will run a plan overnight and have a validation report waiting.
+Phase 0 is a short config dialogue — autonomy level, how many delegators run concurrently, whether PRs auto-merge or stop at review — with defaults auto-suggested from the size of the plan. Then it tells you exactly what Phase 1 will look like (how many areas appear, how escalations reach you, what "done" means) before it spawns anything. Set autonomy to Fully Autonomous and it will run a plan overnight and have a validation report waiting.
 
 ────
 
@@ -194,7 +194,7 @@ The headline pattern is **language overloading**. Single-word triggers that invo
 | Trigger | Behavior |
 |---|---|
 | `clear` | Spawn a fresh, headless agent with isolated context |
-| `new instance` | Launch a Claude Code session in a new c11 pane |
+| `new instance` | Launch a Claude Code session in a new c11 area |
 | `loopy` | Drive a full validation loop. Implement, validate, iterate until actually done. |
 | `dialogue` | Pause and ask every question needed before building |
 
